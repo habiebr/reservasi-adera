@@ -8,10 +8,12 @@ import {
   FileWarning,
   LayoutList,
   LogOut,
+  Package,
   Plus,
   RefreshCcw,
   Settings2,
 } from "lucide-react";
+import BundlesTab from "./BundlesTab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +28,7 @@ interface Me {
 
 const TABS = [
   { id: "forms", label: "Form", icon: LayoutList },
+  { id: "bundles", label: "Paket", icon: Package },
   { id: "bookings", label: "Reservasi", icon: ClipboardList },
   { id: "calq", label: "Dokter & Jadwal", icon: CalendarClock },
   { id: "failures", label: "Gagal Bayar", icon: FileWarning },
@@ -93,6 +96,7 @@ export default function AdminApp() {
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">
         {tab === "forms" && <FormsTab />}
+        {tab === "bundles" && <BundlesTab />}
         {tab === "bookings" && <BookingsTab />}
         {tab === "calq" && <CalqTab />}
         {tab === "failures" && <FailuresTab />}

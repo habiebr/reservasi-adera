@@ -2,8 +2,10 @@
 // definition; the admin builder's preview feeds it the live draft (preview mode disables the
 // final submit).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { format } from "date-fns";
+import { id as localeId } from "date-fns/locale";
 import { ArrowLeft, ArrowRight, Info } from "lucide-react";
-import type { FormBlock, FormBranding, FormDefinition } from "@shared/formTypes";
+import type { FormBlock, FormBranding, FormDefinition, FormPage } from "@shared/formTypes";
 import { Button } from "@/components/ui/button";
 import { apiPost, ApiError } from "@/lib/api";
 import ProgressBar from "./ProgressBar";
@@ -31,6 +33,56 @@ const BLOCKS: Record<string, (p: BlockProps) => JSX.Element | null> = {
   pricing_payment: PricingPayment,
   summary_consent: SummaryConsent,
 };
+
+/** Choices already made on earlier pages, so the patient stays oriented while stepping. */
+function carriedRows(
+  pages: FormPage[],
+  step: number,
+  data: WizardData,
+): { label: string; value: string }[] {
+  const kinds = new Set(pages.slice(0, step).flatMap((p) => p.blocks.map((b) => b.kind)));
+  const rows: { label: string; value: string }[] = [];
+  if (kinds.has("poli_picker") && data.specializationName) {
+    rows.push({ label: "Poli", value: data.specializationName });
+  }
+  if (kinds.has("doctor_picker") && data.doctorName) {
+    rows.push({ label: "Dokter", value: data.doctorName });
+  }
+  if (kinds.has("schedule_picker") && data.visitDate) {
+    const tanggal = format(new Date(`${data.visitDate}T12:00:00`), "EEE, d MMM yyyy", {
+      locale: localeId,
+    });
+    const jam = data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel}` : "");
+    rows.push({ label: "Jadwal", value: jam ? `${tanggal} • ${jam}` : tanggal });
+  }
+  if (kinds.has("patient_lookup") || kinds.has("patient_data")) {
+    const nama = data.found ? data.maskedName : data.patient.nama_lengkap;
+    if (nama) rows.push({ label: "Pasien", value: nama });
+  }
+  const picked = data.procedureIds.length + data.bundleIds.length;
+  if (kinds.has("pricing_payment") && picked > 0) {
+    const bayar = data.jenisPembayaran === "DP"
+      ? " • Bayar DP"
+      : data.jenisPembayaran === "LUNAS"
+      ? " • Bayar Lunas"
+      : "";
+    rows.push({ label: "Tindakan", value: `${picked} dipilih${bayar}` });
+  }
+  return rows;
+}
+
+function CarriedSummary({ rows }: { rows: { label: string; value: string }[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-border bg-secondary/50 px-4 py-2.5">
+      {rows.map((r) => (
+        <span key={r.label} className="text-xs text-muted-foreground">
+          {r.label}: <span className="font-medium text-foreground">{r.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function InfoBlock({ block }: { block: FormBlock }) {
   return (
@@ -67,10 +119,13 @@ export default function WizardRenderer({
     if (!preview) {
       try {
         const raw = sessionStorage.getItem(draftKey);
-        if (raw) return { ...JSON.parse(raw), consent: false } as WizardData;
+        if (raw) {
+          const parsed = JSON.parse(raw) as WizardData;
+          return { ...parsed, consent: false, bundleIds: parsed.bundleIds ?? [] };
+        }
       } catch { /* fresh start */ }
     }
-    return { patient: { ...emptyPatient }, answers: {}, procedureIds: [] };
+    return { patient: { ...emptyPatient }, answers: {}, procedureIds: [], bundleIds: [] };
   });
 
   useEffect(() => {
@@ -122,6 +177,7 @@ export default function WizardRenderer({
           patient: data.patient,
           answers: data.answers,
           procedure_ids: data.procedureIds,
+          bundle_ids: data.bundleIds,
           jenis_pembayaran: data.jenisPembayaran,
         },
       );
@@ -153,6 +209,10 @@ export default function WizardRenderer({
         total={pages.length}
         labels={pages.map((p) => p.title || "•")}
       />
+      {/* the final page renders the full summary block — no need for the strip there */}
+      {!page.blocks.some((b) => b.kind === "summary_consent") && (
+        <CarriedSummary rows={carriedRows(pages, clampedStep, data)} />
+      )}
       <div className="mt-8 space-y-6">
         {page.title && (
           <h2 className="font-display text-lg font-bold text-foreground">{page.title}</h2>

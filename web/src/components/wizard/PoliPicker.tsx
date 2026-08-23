@@ -72,6 +72,7 @@ export default function PoliPicker({ slug, block, data, update }: BlockProps) {
                     scheduleId: undefined,
                     slotTime: undefined,
                     procedureIds: [],
+                    bundleIds: [],
                     jenisPembayaran: undefined,
                   })}
                 className={cn(

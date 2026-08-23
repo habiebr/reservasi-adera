@@ -12,6 +12,7 @@ import {
 import { assembleDefinition, saveDefinition } from "../formStore.ts";
 import { defaultDefinition, validateDefinition, type FormDefinition } from "@shared/formTypes.ts";
 import { runEmrSync, sendInvoiceEmail } from "../emrSync.ts";
+import { listBundles, parseBundleInput, priceBundles, saveBundle } from "../bundles.ts";
 
 export const adminRoutes = new Hono<{ Variables: { admin: AdminClaims } }>();
 
@@ -180,6 +181,45 @@ adminRoutes.delete("/forms/:id", async (c) => {
     return c.json({ ok: true, archived: true });
   }
   await sql`DELETE FROM forms WHERE id = ${id}`;
+  return c.json({ ok: true });
+});
+
+// ── Paket (bundles) ──
+
+adminRoutes.get("/bundles", async (c) => {
+  const bundles = await listBundles();
+  const creds = await loadCalqCreds();
+  // Calq down → serve the catalog without prices; the UI shows a warning instead of locking up.
+  const procedures = creds ? await getProcedures(creds).catch(() => null) : null;
+  return c.json({
+    priced: procedures !== null,
+    bundles: procedures ? priceBundles(bundles, procedures) : bundles,
+  });
+});
+
+adminRoutes.post("/bundles", async (c) => {
+  const input = parseBundleInput(await c.req.json().catch(() => ({})));
+  if (typeof input === "string") return c.json({ error: input }, 400);
+  const id = await saveBundle(input);
+  return c.json({ id });
+});
+
+adminRoutes.put("/bundles/:id", async (c) => {
+  const input = parseBundleInput(await c.req.json().catch(() => ({})));
+  if (typeof input === "string") return c.json({ error: input }, 400);
+  try {
+    await saveBundle(input, c.req.param("id"));
+  } catch {
+    return c.json({ error: "Paket tidak ditemukan." }, 404);
+  }
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete("/bundles/:id", async (c) => {
+  const id = c.req.param("id");
+  // Past bookings keep their bundle_name snapshot; form allow-lists cascade off.
+  const gone = await sql`DELETE FROM bundles WHERE id = ${id} RETURNING id`;
+  if (gone.length === 0) return c.json({ error: "Paket tidak ditemukan." }, 404);
   return c.json({ ok: true });
 });
 

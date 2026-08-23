@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { Checkbox } from "@/components/ui/checkbox";
-import { apiGet, type ProceduresResponse } from "@/lib/api";
+import { apiGet, type BundlesResponse, type ProceduresResponse } from "@/lib/api";
 import { amountDue, dpAmount, formatRupiah, totalAmount, type PricedItem } from "@shared/pricing";
 import type { BlockProps } from "./types";
 
@@ -17,17 +17,22 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function SummaryConsent({ slug, block, data, update }: BlockProps) {
   const [resp, setResp] = useState<ProceduresResponse | null>(null);
+  const [bundleResp, setBundleResp] = useState<BundlesResponse | null>(null);
 
   useEffect(() => {
-    if (!data.specializationId) return;
+    if (data.procedureIds.length === 0 || !data.specializationId) return;
     apiGet<ProceduresResponse>(
       `/api/calq/procedures?slug=${slug}&specializationId=${data.specializationId}`,
     ).then(setResp).catch(() => {});
-  }, [slug, data.specializationId]);
+  }, [slug, data.specializationId, data.procedureIds.length]);
+
+  useEffect(() => {
+    if (data.bundleIds.length === 0) return;
+    apiGet<BundlesResponse>(`/api/calq/bundles?slug=${slug}`).then(setBundleResp).catch(() => {});
+  }, [slug, data.bundleIds.length]);
 
   const items: PricedItem[] = useMemo(() => {
-    if (!resp) return [];
-    return data.procedureIds
+    const fromProcedures: PricedItem[] = !resp ? [] : data.procedureIds
       .map((id) => resp.procedures.find((p) => p.id === id))
       .filter((p): p is NonNullable<typeof p> => Boolean(p))
       .map((p) => ({
@@ -38,12 +43,25 @@ export default function SummaryConsent({ slug, block, data, update }: BlockProps
         isDownPayment: p.isDownPayment,
         downPaymentAmount: p.downPaymentAmount,
       }));
-  }, [resp, data.procedureIds]);
+    const fromBundles: PricedItem[] = !bundleResp ? [] : data.bundleIds
+      .map((id) => bundleResp.bundles.find((b) => b.id === id))
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+      .map((b) => ({
+        procedureId: b.id,
+        name: b.name,
+        unitPrice: b.price,
+        quantity: 1,
+        isDownPayment: b.isDownPayment,
+        downPaymentAmount: b.downPaymentAmount,
+      }));
+    return [...fromProcedures, ...fromBundles];
+  }, [resp, bundleResp, data.procedureIds, data.bundleIds]);
 
+  const dpSource = data.bundleIds.length > 0 ? bundleResp?.dp : resp?.dp;
   const dpCfg = {
-    dpEnabled: resp?.dp.enabled ?? false,
-    dpRule: resp?.dp.rule ?? ("calq" as const),
-    dpValue: resp?.dp.value ?? undefined,
+    dpEnabled: dpSource?.enabled ?? false,
+    dpRule: dpSource?.rule ?? ("calq" as const),
+    dpValue: dpSource?.value ?? undefined,
   };
   const total = totalAmount(items);
   const due = data.jenisPembayaran ? amountDue(items, dpCfg, data.jenisPembayaran) : 0;
@@ -62,7 +80,7 @@ export default function SummaryConsent({ slug, block, data, update }: BlockProps
         <Row label="Tanggal" value={tanggal} />
         <Row
           label="Jam"
-          value={data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel} (antrean)` : "-")}
+          value={data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel}` : "-")}
         />
       </section>
 

@@ -22,6 +22,29 @@ import {
 } from "./calq.ts";
 import { loadSmtpCreds, looksLikeEmail, sendEmail } from "./email.ts";
 import { renderInvoiceEmail } from "./emailTemplates.ts";
+import { groupBookingItemRows } from "./bundles.ts";
+
+/** Sale lines per procedure; the same procedure arriving via two bundles merges into one
+ * line with summed quantity (Calq expects one row per referenceId). */
+function mergedProcedureItems(
+  rows: readonly Record<string, unknown>[],
+): { referenceType: string; referenceId: number; quantity: number; unitPrice: number }[] {
+  const byId = new Map<number, { referenceType: string; referenceId: number; quantity: number; unitPrice: number }>();
+  for (const r of rows) {
+    const id = Number(r.procedure_id);
+    const existing = byId.get(id);
+    if (existing) existing.quantity += Number(r.quantity);
+    else {
+      byId.set(id, {
+        referenceType: "PROCEDURE",
+        referenceId: id,
+        quantity: Number(r.quantity),
+        unitPrice: Number(r.unit_price),
+      });
+    }
+  }
+  return [...byId.values()];
+}
 
 async function recordFailure(bookingId: string, error: string): Promise<void> {
   console.error(`[emr-sync] ${bookingId} FAILED: ${error}`);
@@ -72,7 +95,7 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
   const items = await sql`
     SELECT procedure_id, procedure_name, unit_price, quantity
     FROM booking_items WHERE booking_id = ${bookingId}`;
-  const procedureIds = items.map((i) => Number(i.procedure_id));
+  const procedureIds = [...new Set(items.map((i) => Number(i.procedure_id)))];
   // postgres.js hands `date` columns back as JS Date objects — normalise to YYYY-MM-DD
   const visitDate = bk.visit_date instanceof Date
     ? bk.visit_date.toISOString().slice(0, 10)
@@ -122,12 +145,7 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
   //     earlier retry may have left behind (never double-invoice). ──
   let saleId = bk.sale_id as string | null;
   if (!saleId) {
-    const ourItems = items.map((i) => ({
-      referenceType: "PROCEDURE",
-      referenceId: Number(i.procedure_id),
-      quantity: Number(i.quantity),
-      unitPrice: Number(i.unit_price),
-    }));
+    const ourItems = mergedProcedureItems(items);
     let sale = await findExistingSale(
       creds,
       (bk.mrn as string | null) ?? null,
@@ -195,12 +213,7 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
             quantity: Number(i.quantity ?? 1),
             unitPrice: Number(i.unitPrice ?? 0),
           }));
-        const ours = items.map((i) => ({
-          referenceType: "PROCEDURE",
-          referenceId: Number(i.procedure_id),
-          quantity: Number(i.quantity),
-          unitPrice: Number(i.unit_price),
-        }));
+        const ours = mergedProcedureItems(items);
         try {
           await replaceSaleItems(creds, saleId, [...keep, ...ours]);
         } catch (err) {
@@ -288,7 +301,8 @@ export async function sendInvoiceEmail(bookingId: string, force = false): Promis
   }
 
   const items = await sql`
-    SELECT procedure_name, unit_price, quantity FROM booking_items WHERE booking_id = ${bookingId}`;
+    SELECT procedure_name, unit_price, quantity, bundle_id, bundle_name
+    FROM booking_items WHERE booking_id = ${bookingId}`;
   const tanggal = new Date(String(bk.visit_date)).toLocaleDateString("id-ID", {
     weekday: "long",
     day: "numeric",
@@ -307,11 +321,7 @@ export async function sendInvoiceEmail(bookingId: string, force = false): Promis
     dokter: bk.doctor_name as string | null,
     tanggal,
     jam: bk.slot_time as string | null,
-    items: items.map((i) => ({
-      name: String(i.procedure_name),
-      unitPrice: Number(i.unit_price),
-      quantity: Number(i.quantity),
-    })),
+    items: groupBookingItemRows(items),
     totalAmount: Number(bk.total_amount),
     jenisPembayaran: bk.jenis_pembayaran === "DP" ? "DP" : "LUNAS",
     paidAmount: Number(bk.amount_due),

@@ -3,7 +3,8 @@
 // number the patient sees is the number DOKU charges.
 
 export interface PricedItem {
-  procedureId: number;
+  /** Calq procedure id, or a bundle uuid when the line represents a whole package. */
+  procedureId: number | string;
   name: string;
   /** Calq price actually charged: specialPrice > 0 ? specialPrice : price */
   unitPrice: number;

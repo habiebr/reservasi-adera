@@ -35,11 +35,14 @@ export async function assembleDefinition(formId: string): Promise<FormDefinition
     SELECT * FROM form_blocks WHERE page_id IN ${sql(pageIds)} ORDER BY sort_order`;
   const blockIds = blocks.map((b) => b.id as string);
 
-  const [specs, procs, fields] = blockIds.length === 0 ? [[], [], []] : await Promise.all([
-    sql`SELECT * FROM form_block_specializations WHERE block_id IN ${sql(blockIds)}`,
-    sql`SELECT * FROM form_block_procedures WHERE block_id IN ${sql(blockIds)}`,
-    sql`SELECT * FROM form_fields WHERE block_id IN ${sql(blockIds)} ORDER BY sort_order`,
-  ]);
+  const [specs, procs, fields, bundleRefs] = blockIds.length === 0
+    ? [[], [], [], []]
+    : await Promise.all([
+      sql`SELECT * FROM form_block_specializations WHERE block_id IN ${sql(blockIds)}`,
+      sql`SELECT * FROM form_block_procedures WHERE block_id IN ${sql(blockIds)}`,
+      sql`SELECT * FROM form_fields WHERE block_id IN ${sql(blockIds)} ORDER BY sort_order`,
+      sql`SELECT * FROM form_block_bundles WHERE block_id IN ${sql(blockIds)}`,
+    ]);
 
   const wirePages: FormPage[] = pages.map((p) => ({
     id: p.id as string,
@@ -67,6 +70,9 @@ export async function assembleDefinition(formId: string): Promise<FormDefinition
           config.allowedProcedures = procs
             .filter((s) => s.block_id === b.id)
             .map((s) => ({ id: Number(s.procedure_id), name: s.procedure_name as string }));
+          config.allowedBundles = bundleRefs
+            .filter((s) => s.block_id === b.id)
+            .map((s) => ({ id: s.bundle_id as string, name: (s.bundle_name as string) ?? "" }));
         }
         if (b.kind === "patient_data") {
           config.customFields = fields
@@ -158,6 +164,15 @@ export async function saveDefinition(formId: string, def: FormDefinition): Promi
             VALUES (${blockId}, ${p.id}, ${p.name ?? ""})
             ON CONFLICT DO NOTHING`;
         }
+        await tx`DELETE FROM form_block_bundles WHERE block_id = ${blockId}`;
+        for (const bref of c.allowedBundles ?? []) {
+          if (!UUID_RE.test(bref.id)) continue;
+          // INSERT…SELECT so a bundle deleted since the builder loaded is silently dropped
+          await tx`
+            INSERT INTO form_block_bundles (block_id, bundle_id, bundle_name)
+            SELECT ${blockId}, b.id, ${bref.name ?? ""} FROM bundles b WHERE b.id = ${bref.id}
+            ON CONFLICT DO NOTHING`;
+        }
 
         const fieldsWanted = block.kind === "patient_data" ? (c.customFields ?? []) : [];
         for (let fi = 0; fi < fieldsWanted.length; fi++) {
@@ -200,6 +215,8 @@ export async function saveDefinition(formId: string, def: FormDefinition): Promi
 export interface BookingConfig {
   allowedSpecializationIds: number[];
   allowedProcedureIds: number[];
+  pricingMode: "procedure" | "package";
+  allowedBundleIds: string[];
   dpEnabled: boolean;
   dpRule: "calq" | "fixed" | "percent";
   dpValue?: number;
@@ -219,6 +236,8 @@ export async function bookingConfigForForm(formId: string): Promise<BookingConfi
   return {
     allowedSpecializationIds: (poli?.config.allowedSpecializations ?? []).map((s) => s.id),
     allowedProcedureIds: (pricing?.config.allowedProcedures ?? []).map((p) => p.id),
+    pricingMode: pricing?.config.pricingMode ?? "procedure",
+    allowedBundleIds: (pricing?.config.allowedBundles ?? []).map((b) => b.id),
     dpEnabled: pricing?.config.dpEnabled ?? false,
     dpRule: pricing?.config.dpRule ?? "calq",
     dpValue: pricing?.config.dpValue,

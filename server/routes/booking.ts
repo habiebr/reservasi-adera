@@ -23,7 +23,16 @@ import {
   maskName,
 } from "@shared/identity.ts";
 import { amountDue, dpAmount, totalAmount, type PricedItem } from "@shared/pricing.ts";
+import { groupBookingItemRows, listBundles, priceBundles } from "../bundles.ts";
 import { runEmrSync } from "../emrSync.ts";
+
+/** A charge line as stored: always one row per underlying Calq procedure, remembering the
+ * bundle (paket) it came from so summaries can regroup it. */
+type BookingItem = PricedItem & {
+  procedureId: number;
+  bundleId?: string;
+  bundleName?: string;
+};
 
 export const bookingRoutes = new Hono();
 
@@ -52,6 +61,8 @@ bookingRoutes.post("/lookup", async (c) => {
 
   const nik = String(body.nik ?? "").replace(/\D/g, "");
   const mrn = String(body.mrn ?? "").trim();
+  const dob = String(body.tanggal_lahir ?? "").trim();
+  if (!isValidTanggalLahir(dob)) return c.json({ error: "Tanggal lahir wajib diisi." }, 400);
 
   let patient = null;
   if (nik) {
@@ -64,6 +75,11 @@ bookingRoutes.post("/lookup", async (c) => {
   } else {
     return c.json({ error: "Isi NIK atau No. RM." }, 400);
   }
+
+  // Tanggal lahir is the second identity factor: an EMR hit whose birth date differs from
+  // the one entered is reported as "not found" so NIK/MRN alone reveals nothing.
+  const emrDob = String(patient?.dateOfBirth ?? "").slice(0, 10);
+  if (patient && emrDob && emrDob !== dob) patient = null;
 
   if (!patient) return c.json({ found: false });
   // Masked on purpose: this endpoint is an enumeration surface.
@@ -96,9 +112,16 @@ bookingRoutes.post("/patient", async (c) => {
   if (!isValidTanggalLahir(dob)) return c.json({ error: "Tanggal lahir tidak valid." }, 400);
   if (!phone) return c.json({ error: "Nomor HP wajib diisi." }, 400);
 
-  // Never create a duplicate: if the NIK already exists in Calq, reuse it.
+  // Never create a duplicate: if the NIK already exists in Calq, reuse it — but only when
+  // the entered birth date matches the record (same second factor as the lookup).
   const existing = await findCalqPatientByNik(creds, nik);
   if (existing) {
+    const emrDob = String(existing.dateOfBirth ?? "").slice(0, 10);
+    if (emrDob && emrDob !== dob) {
+      return c.json({
+        error: "NIK sudah terdaftar dengan tanggal lahir berbeda. Silakan hubungi klinik.",
+      }, 409);
+    }
     return c.json({ calq_patient_id: String(existing.id), mrn: existing.medicalRecordNumber, existing: true });
   }
 
@@ -142,16 +165,63 @@ bookingRoutes.post("/create", async (c) => {
   const procedureIds: number[] = Array.isArray(body.procedure_ids)
     ? body.procedure_ids.map(Number).filter(Boolean)
     : [];
+  const bundleIds: string[] = Array.isArray(body.bundle_ids)
+    ? [...new Set((body.bundle_ids as unknown[]).map((v) => String(v)).filter(Boolean))]
+    : [];
   const calqPatientId = String(body.calq_patient_id ?? "");
   const patient = (body.patient ?? {}) as Record<string, string>;
-  const nama = String(patient.nama_lengkap ?? "").trim();
+  const bp = {
+    nik: String(patient.nik ?? "").replace(/\D/g, ""),
+    mrn: String(patient.mrn ?? "").trim(),
+    nama: String(patient.nama_lengkap ?? "").trim(),
+    tanggal_lahir: String(patient.tanggal_lahir ?? "").trim(),
+    jenis_kelamin: String(patient.jenis_kelamin ?? "").trim(),
+    nomor_hp: canonPhone(patient.nomor_hp),
+    email: String(patient.email ?? "").trim(),
+    alamat: String(patient.alamat_domisili ?? "").trim(),
+  };
 
   if (!specializationId || !scheduleId || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)) {
     return c.json({ error: "Pilihan jadwal tidak lengkap." }, 400);
   }
-  if (procedureIds.length === 0) return c.json({ error: "Pilih minimal satu tindakan." }, 400);
+  if (cfg.pricingMode === "package") {
+    if (bundleIds.length === 0) return c.json({ error: "Pilih minimal satu paket." }, 400);
+  } else if (procedureIds.length === 0) {
+    return c.json({ error: "Pilih minimal satu tindakan." }, 400);
+  }
   if (!calqPatientId) return c.json({ error: "Data pasien belum lengkap." }, 400);
-  if (!nama) return c.json({ error: "Nama pasien wajib." }, 400);
+
+  // Returning patients arrive with only NIK/No. RM + tanggal lahir (the lookup is masked on
+  // purpose). Re-resolve them in Calq and hydrate the booking so payment, the invoice email,
+  // and EMR sync all carry the real identity — and so a client-supplied calq_patient_id can
+  // never bind a booking to a patient it didn't verify.
+  if (!bp.nama) {
+    const found = bp.nik
+      ? await findCalqPatientByNik(creds, bp.nik)
+      : bp.mrn
+      ? await findCalqPatientByMrn(creds, bp.mrn)
+      : null;
+    if (!found || String(found.id) !== calqPatientId) {
+      return c.json({ error: "Data pasien tidak ditemukan. Ulangi pengecekan NIK/No. RM." }, 400);
+    }
+    const emrDob = String(found.dateOfBirth ?? "").slice(0, 10);
+    if (emrDob && emrDob !== bp.tanggal_lahir) {
+      return c.json({ error: "Tanggal lahir tidak cocok dengan data klinik." }, 400);
+    }
+    bp.nama = [found.firstName, found.lastName].filter(Boolean).join(" ").trim();
+    bp.nik = bp.nik || String(found.identityNumber ?? "").replace(/\D/g, "");
+    bp.mrn = bp.mrn || String(found.medicalRecordNumber ?? "").trim();
+    bp.tanggal_lahir = bp.tanggal_lahir || emrDob;
+    bp.jenis_kelamin = found.gender === "MALE"
+      ? "Laki-laki"
+      : found.gender === "FEMALE"
+      ? "Perempuan"
+      : bp.jenis_kelamin;
+    bp.nomor_hp = bp.nomor_hp ?? canonPhone(found.mobilePhone ?? found.whatsappNumber);
+    bp.email = bp.email || String(found.email ?? "").trim();
+    bp.alamat = bp.alamat || String(found.domicileAddress ?? "").trim();
+  }
+  if (!bp.nama) return c.json({ error: "Nama pasien wajib." }, 400);
   if (
     cfg.allowedSpecializationIds.length > 0 &&
     !cfg.allowedSpecializationIds.includes(specializationId)
@@ -174,23 +244,56 @@ bookingRoutes.post("/create", async (c) => {
   }
 
   // ── server-side pricing from live Calq ──
-  const procedures = await getProcedures(creds, specializationId).catch(() => null);
-  if (!procedures) return c.json({ error: "Gagal memuat tindakan dari EMR." }, 502);
-  const items: PricedItem[] = [];
-  for (const id of new Set(procedureIds)) {
-    const proc = procedures.find((p) => p.id === id && p.isActive);
-    if (!proc) return c.json({ error: "Tindakan tidak tersedia." }, 400);
-    if (cfg.allowedProcedureIds.length > 0 && !cfg.allowedProcedureIds.includes(id)) {
-      return c.json({ error: "Tindakan tidak tersedia pada form ini." }, 400);
+  const items: BookingItem[] = [];
+  if (cfg.pricingMode === "package") {
+    // paket mode: expand each bundle into its underlying procedures at live prices
+    if (
+      cfg.allowedBundleIds.length > 0 &&
+      bundleIds.some((id) => !cfg.allowedBundleIds.includes(id))
+    ) {
+      return c.json({ error: "Paket tidak tersedia pada form ini." }, 400);
     }
-    items.push({
-      procedureId: proc.id,
-      name: proc.name,
-      unitPrice: procedurePrice(proc),
-      quantity: 1,
-      isDownPayment: Boolean(proc.isDownPayment),
-      downPaymentAmount: Number(proc.downPaymentAmount ?? 0),
-    });
+    const bundles = await listBundles({ activeOnly: true, ids: bundleIds });
+    if (bundles.length !== bundleIds.length) {
+      return c.json({ error: "Paket tidak tersedia." }, 400);
+    }
+    const procedures = await getProcedures(creds).catch(() => null);
+    if (!procedures) return c.json({ error: "Gagal memuat tindakan dari EMR." }, 502);
+    for (const b of priceBundles(bundles, procedures)) {
+      if (!b.available || b.price <= 0) {
+        return c.json({ error: `Paket "${b.name}" sedang tidak tersedia.` }, 400);
+      }
+      for (const i of b.items) {
+        items.push({
+          procedureId: i.procedureId,
+          name: i.procedureName,
+          unitPrice: i.unitPrice,
+          quantity: i.quantity,
+          isDownPayment: i.isDownPayment,
+          downPaymentAmount: i.downPaymentAmount,
+          bundleId: b.id,
+          bundleName: b.name,
+        });
+      }
+    }
+  } else {
+    const procedures = await getProcedures(creds, specializationId).catch(() => null);
+    if (!procedures) return c.json({ error: "Gagal memuat tindakan dari EMR." }, 502);
+    for (const id of new Set(procedureIds)) {
+      const proc = procedures.find((p) => p.id === id && p.isActive);
+      if (!proc) return c.json({ error: "Tindakan tidak tersedia." }, 400);
+      if (cfg.allowedProcedureIds.length > 0 && !cfg.allowedProcedureIds.includes(id)) {
+        return c.json({ error: "Tindakan tidak tersedia pada form ini." }, 400);
+      }
+      items.push({
+        procedureId: proc.id,
+        name: proc.name,
+        unitPrice: procedurePrice(proc),
+        quantity: 1,
+        isDownPayment: Boolean(proc.isDownPayment),
+        downPaymentAmount: Number(proc.downPaymentAmount ?? 0),
+      });
+    }
   }
   const dpCfg = { dpEnabled: cfg.dpEnabled, dpRule: cfg.dpRule, dpValue: cfg.dpValue };
   const total = totalAmount(items);
@@ -218,12 +321,11 @@ bookingRoutes.post("/create", async (c) => {
   }
 
   // NIK dedupe: one live booking per patient per doctor-schedule per day.
-  const nik = String(patient.nik ?? "").replace(/\D/g, "") || null;
-  if (nik) {
+  if (bp.nik) {
     const dupes = await sql`
       SELECT 1 FROM bookings b
       JOIN booking_patients bp ON bp.booking_id = b.id
-      WHERE bp.nik = ${nik} AND b.calq_schedule_id = ${scheduleId}
+      WHERE bp.nik = ${bp.nik} AND b.calq_schedule_id = ${scheduleId}
         AND b.visit_date = ${visitDate} AND b.status IN ('PENDING','CONFIRMED')
       LIMIT 1`;
     if (dupes.length > 0) {
@@ -256,15 +358,18 @@ bookingRoutes.post("/create", async (c) => {
           booking_id, nik, mrn, nama_lengkap, tanggal_lahir, jenis_kelamin,
           nomor_hp, email, alamat_domisili
         ) VALUES (
-          ${id}, ${nik}, ${String(patient.mrn ?? "") || null}, ${nama.toUpperCase()},
-          ${patient.tanggal_lahir || null}, ${patient.jenis_kelamin || null},
-          ${canonPhone(patient.nomor_hp)}, ${String(patient.email ?? "").trim() || null},
-          ${String(patient.alamat_domisili ?? "").trim() || null}
+          ${id}, ${bp.nik || null}, ${bp.mrn || null}, ${bp.nama.toUpperCase()},
+          ${bp.tanggal_lahir || null}, ${bp.jenis_kelamin || null},
+          ${bp.nomor_hp}, ${bp.email || null}, ${bp.alamat || null}
         )`;
       for (const item of items) {
         await tx`
-          INSERT INTO booking_items (booking_id, procedure_id, procedure_name, unit_price, quantity)
-          VALUES (${id}, ${item.procedureId}, ${item.name}, ${item.unitPrice}, ${item.quantity})`;
+          INSERT INTO booking_items (
+            booking_id, procedure_id, procedure_name, unit_price, quantity, bundle_id, bundle_name
+          ) VALUES (
+            ${id}, ${item.procedureId}, ${item.name}, ${item.unitPrice}, ${item.quantity},
+            ${item.bundleId ?? null}, ${item.bundleName ?? null}
+          )`;
       }
       for (const f of cfg.customFields) {
         const value = String(answers[f.id] ?? "").trim();
@@ -293,7 +398,7 @@ bookingRoutes.post("/create", async (c) => {
   const result = await createCheckout(doku, {
     invoiceNumber,
     amount: due,
-    customer: { name: nama, email: patient.email, phone: canonPhone(patient.nomor_hp) },
+    customer: { name: bp.nama, email: bp.email || null, phone: bp.nomor_hp },
     callbackUrl: `${appUrl}/${form.slug}/status?invoice=${invoiceNumber}`,
     notificationUrl: `${appUrl}/api/webhooks/doku`,
   });
@@ -310,7 +415,7 @@ bookingRoutes.post("/create", async (c) => {
         ${
       sql.json(JSON.parse(JSON.stringify({
         selection: { specializationId, scheduleId, visitDate, slotTime },
-        patient,
+        patient: bp,
         items,
         jenis,
         total,
@@ -371,7 +476,8 @@ bookingRoutes.get("/status", async (c) => {
   }
 
   const items = await sql`
-    SELECT procedure_name, unit_price, quantity FROM booking_items WHERE booking_id = ${row.id}`;
+    SELECT procedure_name, unit_price, quantity, bundle_id, bundle_name
+    FROM booking_items WHERE booking_id = ${row.id}`;
 
   return c.json({
     booking_status: row.booking_status,
@@ -394,11 +500,7 @@ bookingRoutes.get("/status", async (c) => {
     booking_code: row.booking_code,
     queue_number: row.queue_number,
     emr_ok: row.sync_status === "REGISTERED",
-    items: items.map((i) => ({
-      name: i.procedure_name,
-      unitPrice: Number(i.unit_price),
-      quantity: Number(i.quantity),
-    })),
+    items: groupBookingItemRows(items),
   });
 });
 

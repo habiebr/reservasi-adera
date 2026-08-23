@@ -36,6 +36,7 @@ export interface WizardData {
   answers: Record<string, string>;
   // pricing
   procedureIds: number[];
+  bundleIds: string[];
   jenisPembayaran?: "LUNAS" | "DP";
   consent?: boolean;
 }
@@ -92,8 +93,9 @@ export function pageComplete(page: FormPage, data: WizardData): boolean {
         if (data.bookingOrderType === "EXACT_TIME" && !data.slotTime) return false;
         break;
       case "patient_lookup":
+        // Not-found is a valid outcome: the patient_data block (wherever the builder placed
+        // it) gates registration itself, so the lookup page must not also require it.
         if (!data.lookupDone) return false;
-        if (!data.found && !samePageHasData(page)) return false;
         break;
       case "patient_data": {
         if (data.found) break; // existing patient — form hidden
@@ -106,7 +108,9 @@ export function pageComplete(page: FormPage, data: WizardData): boolean {
         break;
       }
       case "pricing_payment":
-        if (data.procedureIds.length === 0 || !data.jenisPembayaran) return false;
+        if (data.procedureIds.length + data.bundleIds.length === 0 || !data.jenisPembayaran) {
+          return false;
+        }
         break;
       case "summary_consent":
         if (!data.consent) return false;
@@ -114,8 +118,4 @@ export function pageComplete(page: FormPage, data: WizardData): boolean {
     }
   }
   return true;
-}
-
-function samePageHasData(page: FormPage): boolean {
-  return page.blocks.some((b) => b.kind === "patient_data");
 }

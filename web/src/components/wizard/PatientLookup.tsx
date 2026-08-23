@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { CheckCircle2, Search, UserPlus } from "lucide-react";
+import { isValidTanggalLahir } from "@shared/identity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiPost, type LookupResponse } from "@/lib/api";
+import DateSegments from "./DateSegments";
 import { emptyPatient } from "./types";
 import type { BlockProps } from "./types";
 import { cn } from "@/lib/utils";
@@ -11,6 +14,7 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
   const allowMrn = block.config.allowMrn ?? true;
   const [mode, setMode] = useState<"nik" | "mrn">("nik");
   const [value, setValue] = useState("");
+  const [dob, setDob] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,12 +28,17 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
       setError("No. RM terlalu pendek.");
       return;
     }
+    if (!isValidTanggalLahir(dob)) {
+      setError("Isi tanggal lahir dengan lengkap.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const r = await apiPost<LookupResponse>("/api/booking/lookup", {
         slug,
         [mode]: v,
+        tanggal_lahir: dob,
       });
       if (r.found) {
         update({
@@ -41,6 +50,7 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
             ...data.patient,
             nik: mode === "nik" ? v : data.patient.nik,
             mrn: r.mrn ?? "",
+            tanggal_lahir: dob,
           },
         });
       } else {
@@ -49,7 +59,7 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
           found: false,
           calqPatientId: undefined,
           maskedName: undefined,
-          patient: { ...emptyPatient, nik: mode === "nik" ? v : "" },
+          patient: { ...emptyPatient, nik: mode === "nik" ? v : "", tanggal_lahir: dob },
         });
       }
     } catch (e) {
@@ -82,8 +92,9 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
           ))}
         </div>
       )}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <div className="space-y-1.5">
+        <Label>{mode === "nik" ? "NIK" : "No. RM"}</Label>
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             inputMode={mode === "nik" ? "numeric" : "text"}
@@ -97,6 +108,12 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
             }}
             className="h-11 pl-9"
           />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <Label>Tanggal lahir</Label>
+          <DateSegments value={dob} onChange={setDob} />
         </div>
         <Button onClick={run} disabled={loading} className="h-11 px-6">
           {loading ? "Memeriksa…" : "Cek"}
@@ -129,9 +146,10 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
         <div className="flex items-start gap-3 rounded-xl border-2 border-info/40 bg-info/5 p-4">
           <UserPlus className="mt-0.5 h-5 w-5 shrink-0 text-info" />
           <div>
-            <p className="text-sm font-semibold text-foreground">Pasien baru</p>
+            <p className="text-sm font-semibold text-foreground">Data tidak ditemukan</p>
             <p className="text-xs text-muted-foreground">
-              Data Anda belum terdaftar. Silakan lengkapi data diri di bawah untuk mendaftar.
+              Pastikan {mode === "nik" ? "NIK" : "No. RM"} dan tanggal lahir sudah benar, atau
+              lengkapi data diri di bawah untuk mendaftar sebagai pasien baru.
             </p>
           </div>
         </div>

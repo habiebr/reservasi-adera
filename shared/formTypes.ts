@@ -47,6 +47,11 @@ export interface AllowedRef {
   name: string;
 }
 
+export interface AllowedBundleRef {
+  id: string; // bundle uuid
+  name: string;
+}
+
 export interface BlockConfig {
   // schedule_picker
   maxDaysAhead?: number;
@@ -64,6 +69,8 @@ export interface BlockConfig {
   // poli_picker / pricing_payment allow-lists (empty = everything active in Calq)
   allowedSpecializations?: AllowedRef[];
   allowedProcedures?: AllowedRef[];
+  // pricing_payment, pricingMode "package": which bundles to offer (empty = all active)
+  allowedBundles?: AllowedBundleRef[];
   // summary_consent
   consentText?: string;
   // info_page

@@ -72,6 +72,21 @@ export interface ProceduresResponse {
   procedures: ProcedureOption[];
 }
 
+export interface BundleOption {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  isDownPayment: boolean;
+  downPaymentAmount: number;
+  items: { name: string; quantity: number; unitPrice: number }[];
+}
+
+export interface BundlesResponse {
+  dp: { enabled: boolean; rule: "calq" | "fixed" | "percent"; value: number | null };
+  bundles: BundleOption[];
+}
+
 export interface LookupResponse {
   found: boolean;
   calq_patient_id?: string;

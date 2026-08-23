@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, UserRound } from "lucide-react";
+import { UserRound } from "lucide-react";
 import { apiGet, type DoctorOption } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -79,12 +79,6 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-foreground">{doc.name}</span>
-              <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                {doc.bookingOrderType === "EXACT_TIME"
-                  ? `Per janji ${doc.sessionDuration} menit`
-                  : "Sistem antrean"}
-              </span>
               <span className="mt-2 flex flex-wrap gap-1">
                 {doc.practiceDays.map((d) => (
                   <span

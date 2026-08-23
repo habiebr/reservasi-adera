@@ -70,12 +70,8 @@ export default function SchedulePicker({ slug, block, data, update }: BlockProps
           }}
           disabled={(d) =>
             d < today || d > maxDate || (practiceDays.size > 0 && !practiceDays.has(d.getDay()))}
-          className="mx-auto"
+          className="mx-auto w-fit"
         />
-        <p className="px-2 pb-2 text-xs text-muted-foreground">
-          Tanggal yang bisa dipilih mengikuti hari praktik dokter, maksimal {maxDaysAhead} hari ke
-          depan.
-        </p>
       </div>
 
       {data.visitDate && (
@@ -224,13 +220,8 @@ function QueueSessions({
             >
               <Users className="h-5 w-5" />
             </span>
-            <span>
-              <span className="block text-sm font-semibold text-foreground">
-                Sesi praktik {label}
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                Nomor antrean diberikan setelah pembayaran.
-              </span>
+            <span className="text-sm font-semibold text-foreground">
+              Sesi praktik {label}
             </span>
           </button>
         );

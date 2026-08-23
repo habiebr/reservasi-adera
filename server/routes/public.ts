@@ -12,6 +12,7 @@ import {
   procedurePrice,
 } from "../calq.ts";
 import { assembleDefinition, bookingConfigForForm } from "../formStore.ts";
+import { listBundles, priceBundles } from "../bundles.ts";
 
 export const publicRoutes = new Hono();
 
@@ -155,6 +156,38 @@ publicRoutes.get("/calq/slots", async (c) => {
       startTime: s.startTime,
       endTime: s.endTime,
     })),
+  });
+});
+
+publicRoutes.get("/calq/bundles", async (c) => {
+  const form = await formBySlug(c.req.query("slug") ?? "");
+  if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
+  const creds = await loadCalqCreds();
+  if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
+  const cfg = await bookingConfigForForm(form.id as string);
+
+  const bundles = await listBundles({
+    activeOnly: true,
+    ids: cfg.allowedBundleIds.length > 0 ? cfg.allowedBundleIds : undefined,
+  });
+  const procedures = await cached("procedures:all", () => getProcedures(creds));
+  return c.json({
+    dp: { enabled: cfg.dpEnabled, rule: cfg.dpRule, value: cfg.dpValue ?? null },
+    bundles: priceBundles(bundles, procedures)
+      .filter((b) => b.available && b.price > 0)
+      .map((b) => ({
+        id: b.id,
+        name: b.name,
+        description: b.description,
+        price: b.price,
+        isDownPayment: b.isDownPayment,
+        downPaymentAmount: b.downPaymentAmount,
+        items: b.items.map((i) => ({
+          name: i.procedureName,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+        })),
+      })),
   });
 });
 

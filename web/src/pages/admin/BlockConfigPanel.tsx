@@ -23,6 +23,13 @@ interface CalqProc {
   price: number;
   specializationId: number;
 }
+interface AdminBundle {
+  id: string;
+  name: string;
+  active: boolean;
+  price?: number;
+  items: { procedureName: string; quantity: number }[];
+}
 
 export default function BlockConfigPanel({
   block,
@@ -249,8 +256,40 @@ function PricingConfig({
     .filter((p) => p.name.toLowerCase().includes(filter.toLowerCase()))
     .slice(0, 60);
 
+  const mode = c.pricingMode ?? "procedure";
+
   return (
     <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label className="text-xs">Sumber daftar tindakan</Label>
+        <div className="flex gap-2">
+          {(
+            [
+              ["procedure", "Tindakan Calq"],
+              ["package", "Paket kustom"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setConfig({ pricingMode: v })}
+              className={cn(
+                "rounded-lg border-2 px-3 py-1.5 text-sm transition-all",
+                mode === v
+                  ? "border-primary bg-primary-muted text-primary"
+                  : "border-border text-muted-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {mode === "package"
+            ? "Pasien memilih dari paket yang dikelola di tab Paket."
+            : "Pasien memilih langsung dari tindakan aktif di Calq."}
+        </p>
+      </div>
+
       <div className="space-y-1.5">
         <Label className="text-xs">Uang muka (DP)</Label>
         <label className="flex items-center gap-2 text-sm text-foreground">
@@ -312,6 +351,9 @@ function PricingConfig({
         )}
       </div>
 
+      {mode === "package" && <BundleAllowList block={block} setConfig={setConfig} />}
+
+      {mode === "procedure" && (
       <div className="space-y-1.5">
         <Label className="text-xs">
           Tindakan yang ditawarkan{" "}
@@ -357,6 +399,74 @@ function PricingConfig({
             </>
           )}
       </div>
+      )}
+    </div>
+  );
+}
+
+function BundleAllowList({
+  block,
+  setConfig,
+}: {
+  block: FormBlock;
+  setConfig: (p: Partial<FormBlock["config"]>) => void;
+}) {
+  const [bundles, setBundles] = useState<AdminBundle[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    apiGet<{ bundles: AdminBundle[] }>("/api/admin/bundles")
+      .then((r) => setBundles(r.bundles.filter((b) => b.active)))
+      .catch(() => setFailed(true));
+  }, []);
+
+  const allowed = block.config.allowedBundles ?? [];
+  const toggle = (b: AdminBundle) => {
+    const has = allowed.some((a) => a.id === b.id);
+    setConfig({
+      allowedBundles: has
+        ? allowed.filter((a) => a.id !== b.id)
+        : [...allowed, { id: b.id, name: b.name }],
+    });
+  };
+
+  if (failed) {
+    return (
+      <p className="rounded-lg bg-warning-muted p-2 text-xs text-warning-foreground">
+        Daftar paket tidak bisa dimuat sekarang. Konfigurasi tersimpan tetap berlaku.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">
+        Paket yang ditawarkan{" "}
+        <span className="font-normal text-muted-foreground">(kosong = semua paket aktif)</span>
+      </Label>
+      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+        {(bundles ?? []).map((b) => (
+          <label key={b.id} className="flex items-center gap-2 text-sm text-foreground">
+            <Checkbox
+              checked={allowed.some((a) => a.id === b.id)}
+              onCheckedChange={() => toggle(b)}
+            />
+            <span className="min-w-0 flex-1 truncate">{b.name}</span>
+            {b.price !== undefined && (
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                {formatRupiah(b.price)}
+              </span>
+            )}
+          </label>
+        ))}
+        {!bundles && <p className="p-2 text-xs text-muted-foreground">Memuat paket…</p>}
+        {bundles && bundles.length === 0 && (
+          <p className="p-2 text-xs text-muted-foreground">
+            Belum ada paket — buat dulu di tab Paket.
+          </p>
+        )}
+      </div>
+      {allowed.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">{allowed.length} paket dipilih.</p>
+      )}
     </div>
   );
 }
