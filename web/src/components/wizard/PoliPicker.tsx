@@ -15,6 +15,22 @@ export default function PoliPicker({ slug, block, data, update }: BlockProps) {
       .catch((e) => setError(e.message));
   }, [slug]);
 
+  // A form scoped to exactly one poli shouldn't force a meaningless choice — pre-select it.
+  useEffect(() => {
+    if (!polis || data.specializationId) return;
+    const flat = polis.flatMap((poli) => poli.specializations.map((spec) => ({ poli, spec })));
+    if (flat.length === 1) {
+      const { poli, spec } = flat[0];
+      update({
+        poliId: poli.id,
+        poliName: poli.name,
+        specializationId: spec.id,
+        specializationName: spec.name,
+        bookingOrderType: spec.bookingOrderType,
+      });
+    }
+  }, [polis, data.specializationId, update]);
+
   if (error) {
     return <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{error}</p>;
   }
