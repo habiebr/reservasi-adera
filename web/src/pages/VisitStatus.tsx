@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet, type StatusResponse } from "@/lib/api";
 import { formatRupiah } from "@shared/pricing";
+import SiteChrome from "@/components/SiteChrome";
 
 export default function VisitStatus() {
   const { slug = "" } = useParams();
@@ -35,32 +36,18 @@ export default function VisitStatus() {
   }, [invoice]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="adera-hero-bg">
-        <div className="mx-auto max-w-xl px-4 py-8">
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary">
-            Klinik Adera
-          </p>
-          <h1 className="mt-1 font-display text-2xl font-extrabold text-foreground">
-            Status Reservasi
-          </h1>
+    <SiteChrome title="Status Reservasi">
+      {error && <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{error}</p>}
+      {!status && !error && (
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-2/3 rounded-lg" />
+          <Skeleton className="h-40 rounded-xl" />
         </div>
-      </header>
-      <main className="mx-auto max-w-xl px-4 pb-16">
-        <div className="-mt-2 rounded-2xl border border-border bg-card p-5 shadow-md sm:p-8">
-          {error && <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{error}</p>}
-          {!status && !error && (
-            <div className="space-y-4">
-              <Skeleton className="h-10 w-2/3 rounded-lg" />
-              <Skeleton className="h-40 rounded-xl" />
-            </div>
-          )}
-          {status && status.payment_status === "PENDING" && <Pending status={status} />}
-          {status && status.payment_status === "PAID" && <Paid status={status} />}
-          {status && status.payment_status === "EXPIRED" && <Expired slug={slug} />}
-        </div>
-      </main>
-    </div>
+      )}
+      {status && status.payment_status === "PENDING" && <Pending status={status} />}
+      {status && status.payment_status === "PAID" && <Paid status={status} />}
+      {status && status.payment_status === "EXPIRED" && <Expired slug={slug} />}
+    </SiteChrome>
   );
 }
 

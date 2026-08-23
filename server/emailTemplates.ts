@@ -89,13 +89,21 @@ export function renderInvoiceEmail(input: InvoiceEmailInput): {
     ? "Tunjukkan kode booking saat kedatangan. Sisa pembayaran dilunasi di klinik."
     : "Tunjukkan kode booking saat kedatangan.";
 
+  // PNG on purpose: Outlook cannot render webp (same lesson as the vaksin app's mail logo).
+  const appUrl = (Deno.env.get("APP_URL") ?? "").replace(/\/+$/, "");
+  const logoUrl = appUrl ? `${appUrl}/logo-adera.png` : "";
+
   const html = `<!doctype html>
 <html><body style="margin:0;padding:0;background:#F1F5F9;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:24px 12px;">
 <tr><td align="center">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#FFFFFF;border-radius:12px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-  <tr><td style="background:${BRAND_BLUE};padding:20px 28px;">
-    <span style="color:#FFFFFF;font-size:18px;font-weight:700;">Klinik Adera</span>
+  <tr><td style="background:${BRAND_BLUE};padding:18px 28px;">
+    ${
+    logoUrl
+      ? `<img src="${logoUrl}" alt="Klinik Adera" height="36" style="display:block;height:36px;width:auto;" />`
+      : `<span style="color:#FFFFFF;font-size:18px;font-weight:700;">Klinik Adera</span>`
+  }
   </td></tr>
   <tr><td style="padding:28px;">
     <div style="display:inline-block;background:#DCFCE7;color:#15803D;font-size:11px;font-weight:700;letter-spacing:.08em;padding:4px 10px;border-radius:999px;">PEMBAYARAN DITERIMA</div>

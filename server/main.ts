@@ -13,9 +13,9 @@ app.route("/api/booking", bookingRoutes);
 app.route("/api/webhooks", webhookRoutes);
 app.route("/api/admin", adminRoutes);
 
-// Built SPA (web/dist). Anything that is not /api falls back to index.html.
-app.use("/assets/*", serveStatic({ root: "./web/dist" }));
-app.use("/favicon.ico", serveStatic({ root: "./web/dist" }));
+// Built SPA (web/dist): serve real files (assets, logo, favicon, …) when they exist —
+// serveStatic calls next() on a miss — then fall back to index.html for SPA routes.
+app.use("*", serveStatic({ root: "./web/dist" }));
 app.get("*", serveStatic({ root: "./web/dist", path: "index.html" }));
 
 const port = Number(Deno.env.get("PORT") ?? 8300);
