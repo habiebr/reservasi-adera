@@ -29,6 +29,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - default
+      - tunnel   # vaksinadera's cloudflared network → serves reservasi-staging.habiebraharjo.xyz
 
 volumes:
   reservasi-db-data:
+
+networks:
+  # The Cloudflare Tunnel container (vaksinadera-cloudflared) lives on this network and
+  # reaches the app by container name (http://reservasi-app:8300).
+  tunnel:
+    name: vaksinadera_internal
+    external: true
