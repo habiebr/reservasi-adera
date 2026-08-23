@@ -1,0 +1,213 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Klinik Adera — Verdana Health Design System
+  Primary brand: Klinik Adera blue (#0033FF)
+  Typography: Plus Jakarta Sans + DM Sans + Fira Code
+*/
+
+@layer base {
+  :root {
+    /* Verdana Health color palette — adapted for Klinik Adera blue */
+    --background: 210 40% 98%;        /* #F8FAFC */
+    --foreground: 222 47% 11%;        /* #0F172A */
+
+    --surface: 0 0% 100%;             /* #FFFFFF */
+    --surface-foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary — Klinik Adera #0033FF mapped to navy-adjacent */
+    --primary: 231 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --primary-muted: 228 100% 94%;
+
+    /* Secondary slate */
+    --secondary: 215 20% 95%;
+    --secondary-foreground: 215 25% 27%;
+
+    /* Muted */
+    --muted: 214 32% 91%;
+    --muted-foreground: 215 16% 47%;   /* #64748B */
+
+    --accent: 228 100% 92%;
+    --accent-foreground: 231 100% 40%;
+
+    /* Verdana Health semantic colors */
+    --success: 142 71% 45%;           /* #22C55E */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 48 96% 53%;            /* #EAB308 */
+    --warning-foreground: 32 81% 29%;
+    --warning-muted: 48 100% 96%;
+
+    --destructive: 0 84% 60%;         /* #EF4444 */
+    --destructive-foreground: 0 0% 100%;
+
+    --info: 199 89% 48%;              /* #0EA5E9 */
+    --info-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;            /* #E2E8F0 */
+    --input: 214 32% 91%;
+    --ring: 231 100% 50%;
+
+    /* Verdana Health radius — 8px default */
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 231 100% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 228 100% 94%;
+    --sidebar-accent-foreground: 231 100% 40%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 231 100% 50%;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+    --surface: 222 47% 10%;
+    --surface-foreground: 210 40% 96%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 231 100% 65%;
+    --primary-foreground: 222 47% 8%;
+    --primary-muted: 231 50% 20%;
+    --secondary: 222 30% 18%;
+    --secondary-foreground: 210 40% 80%;
+    --muted: 222 30% 18%;
+    --muted-foreground: 215 20% 60%;
+    --accent: 231 50% 22%;
+    --accent-foreground: 228 80% 80%;
+    --success: 142 65% 45%;
+    --success-foreground: 222 47% 8%;
+    --warning: 48 96% 53%;
+    --warning-foreground: 32 81% 15%;
+    --warning-muted: 48 50% 18%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 28% 22%;
+    --input: 222 28% 22%;
+    --ring: 231 100% 65%;
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 231 100% 65%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 231 50% 22%;
+    --sidebar-accent-foreground: 228 80% 80%;
+    --sidebar-border: 222 28% 22%;
+    --sidebar-ring: 231 100% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+  }
+
+  /* Verdana Health Typography */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    line-height: 1.2;
+    color: hsl(var(--foreground));
+  }
+
+  h1 { font-size: 2rem; line-height: 1.2; }
+  h2 { font-size: 1.5rem; line-height: 1.25; font-weight: 600; }
+  h3 { font-size: 1.25rem; line-height: 1.3; font-weight: 600; }
+  h4 { font-size: 1rem; line-height: 1.35; font-weight: 500; }
+
+  /* Mono for numbers/codes */
+  .font-mono, code, pre {
+    font-family: 'Fira Code', ui-monospace, monospace;
+  }
+
+  /* Verdana Health elevation system */
+  .elevation-sm {
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  }
+  .elevation-default {
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+  }
+  .elevation-md {
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07);
+  }
+  .elevation-lg {
+    box-shadow: 0 8px 32px rgba(15, 23, 42, 0.10);
+  }
+}
+
+/* Klinik Adera brand utilities */
+@layer utilities {
+  .adera-topbar {
+    background-color: hsl(231 100% 50%);
+  }
+
+  .adera-hero-bg {
+    background: linear-gradient(160deg, hsl(210 40% 98%) 0%, hsl(228 100% 95%) 100%);
+  }
+
+  .adera-cta-bg {
+    background: linear-gradient(135deg, hsl(231 100% 50%) 0%, hsl(238 100% 58%) 100%);
+  }
+
+  .adera-card-hover {
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .adera-card-hover:hover {
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+  }
+
+  .adera-stat-number {
+    font-family: 'Fira Code', monospace;
+    color: hsl(231 100% 50%);
+    font-weight: 700;
+  }
+
+  /* Verdana Health chip utility */
+  .chip {
+    @apply inline-flex items-center px-3 py-1 rounded text-xs font-medium uppercase tracking-wide;
+  }
+  .chip-success { @apply bg-success/10 text-green-700; }
+  .chip-warning { @apply bg-warning/10 text-yellow-700; }
+  .chip-error { @apply bg-destructive/10 text-red-700; }
+  .chip-info { @apply bg-blue-50 text-blue-700; }
+  .chip-default { @apply bg-muted text-muted-foreground; }
+}
+
+/* Hide Lovable "Edit with" badge */
+[data-lovable-badge],
+#lovable-badge,
+.lovable-badge,
+[class*="lovable-"],
+[id*="lovable-"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

@@ -300,6 +300,15 @@ export interface CalqAppointment {
  * POST /appointments (probe-confirmed shape). Creating an appointment also auto-creates its
  * sale/invoice in Calq with the PROCEDURE line items — resolve it with findSaleForAppointment.
  */
+export function getAppointment(
+  creds: CalqCreds,
+  id: number | string,
+): Promise<CalqAppointment & { roomId?: number | null }> {
+  return calqGet(creds, `/appointments/${id}`) as Promise<
+    CalqAppointment & { roomId?: number | null }
+  >;
+}
+
 export function createAppointment(
   creds: CalqCreds,
   input: {
@@ -342,24 +351,53 @@ export function isFullyPaid(status: string | null | undefined): boolean {
 }
 
 /**
- * The appointment carries no pointer to its auto-created sale; find it by patient, matching
- * on the appointment date and PROCEDURE line items. Newest match wins; ambiguity → null so
- * the caller records FAILED instead of guessing (money must never land on the wrong invoice).
+ * Create the sale that carries this booking's money. Probed live: an API-created OFFLINE
+ * appointment does NOT auto-create a sale before the visit (the sales seen on completed
+ * appointments are made at consult/checkout), and GET /sales?patientId= is IGNORED by Calq
+ * (returns everyone) — so we create our own sale and hold its id, no matching heuristics.
  */
-export async function findSaleForAppointment(
+export async function createSale(
   creds: CalqCreds,
-  patientId: number,
-  visitDate: string,
+  input: {
+    patientId: number;
+    items: CalqSaleItem[];
+    roomId?: number | null; // required by Calq for PROCEDURE items
+    medicalPersonnelId?: number;
+    notes?: string;
+  },
+): Promise<CalqSale> {
+  const created = await calqPost(creds, "/sales", {
+    patientId: input.patientId,
+    salesItem: input.items,
+    ...(input.roomId ? { roomId: input.roomId } : {}),
+    ...(input.medicalPersonnelId ? { medicalPersonnelId: input.medicalPersonnelId } : {}),
+    ...(input.notes ? { notes: input.notes } : {}),
+  });
+  return created as CalqSale;
+}
+
+/**
+ * Idempotency probe for a retry that crashed between POST /sales and our DB latch: search by
+ * the patient's MRN (string search works; patientId filter does not) for a recent unpaid sale
+ * whose PROCEDURE items exactly match ours. Null = create a fresh one.
+ */
+export async function findExistingSale(
+  creds: CalqCreds,
+  mrn: string | null,
   procedureIds: number[],
 ): Promise<CalqSale | null> {
-  const data = await calqGet(creds, `/sales?patientId=${patientId}`).catch(() => null);
+  if (!mrn) return null;
+  const data = await calqGet(creds, `/sales?search=${encodeURIComponent(mrn)}`).catch(() => null);
   const sales = (Array.isArray(data) ? data : []) as CalqSale[];
-  const wanted = new Set(procedureIds);
+  const wanted = [...procedureIds].sort((a, b) => a - b).join(",");
   const matches = sales.filter((s) => {
-    const sameDay = (s.date ?? "").slice(0, 10) === visitDate;
-    const procItems = (s.items ?? []).filter((i) => i.referenceType === "PROCEDURE");
-    const hitsProcedure = procItems.some((i) => wanted.has(Number(i.referenceId)));
-    return sameDay && hitsProcedure;
+    if (isFullyPaid(s.status)) return false;
+    const procIds = (s.items ?? [])
+      .filter((i) => i.referenceType === "PROCEDURE")
+      .map((i) => Number(i.referenceId))
+      .sort((a, b) => a - b)
+      .join(",");
+    return procIds === wanted && procIds.length > 0;
   });
   if (matches.length === 0) return null;
   matches.sort((a, b) => b.id - a.id);

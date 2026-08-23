@@ -33,6 +33,15 @@ export async function publishedForm(slug: string) {
   return rows[0] ?? null;
 }
 
+/** Any non-archived form. The Calq browse endpoints accept drafts so the builder's live
+ * preview can render the real wizard; they expose only master data (poli/doctor/procedure
+ * lists) that the published forms already expose. Bookings stay published-only. */
+export async function formBySlug(slug: string) {
+  const rows = await sql`
+    SELECT id, slug, title FROM forms WHERE slug = ${slug} AND status != 'archived'`;
+  return rows[0] ?? null;
+}
+
 publicRoutes.get("/forms/:slug", async (c) => {
   const form = await publishedForm(c.req.param("slug"));
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
@@ -50,7 +59,7 @@ publicRoutes.get("/forms/:slug", async (c) => {
 });
 
 publicRoutes.get("/calq/polis", async (c) => {
-  const form = await publishedForm(c.req.query("slug") ?? "");
+  const form = await formBySlug(c.req.query("slug") ?? "");
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
   const creds = await loadCalqCreds();
   if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
@@ -76,7 +85,7 @@ publicRoutes.get("/calq/polis", async (c) => {
 });
 
 publicRoutes.get("/calq/doctors", async (c) => {
-  const form = await publishedForm(c.req.query("slug") ?? "");
+  const form = await formBySlug(c.req.query("slug") ?? "");
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
   const specializationId = Number(c.req.query("specializationId"));
   if (!specializationId) return c.json({ error: "specializationId wajib" }, 400);
@@ -107,7 +116,7 @@ publicRoutes.get("/calq/doctors", async (c) => {
 });
 
 publicRoutes.get("/calq/slots", async (c) => {
-  const form = await publishedForm(c.req.query("slug") ?? "");
+  const form = await formBySlug(c.req.query("slug") ?? "");
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
   const specializationId = Number(c.req.query("specializationId"));
   const doctorId = Number(c.req.query("doctorId"));
@@ -150,7 +159,7 @@ publicRoutes.get("/calq/slots", async (c) => {
 });
 
 publicRoutes.get("/calq/procedures", async (c) => {
-  const form = await publishedForm(c.req.query("slug") ?? "");
+  const form = await formBySlug(c.req.query("slug") ?? "");
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
   const specializationId = Number(c.req.query("specializationId")) || undefined;
   const creds = await loadCalqCreds();

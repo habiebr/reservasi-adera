@@ -7,11 +7,13 @@
 // - A sale whose status is already PAID is settled: never patch it, never pay it again.
 // - Never delete an appointment (it owns procedure_result rows); recovery is
 //   change-schedule in Calq + retry here.
-import { sql } from "./db.ts";
+import { appSettings, sql } from "./db.ts";
 import {
   CalqError,
   createAppointment,
-  findSaleForAppointment,
+  createSale,
+  findExistingSale,
+  getAppointment,
   getSale,
   isFullyPaid,
   loadCalqCreds,
@@ -43,7 +45,7 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
            p.status AS payment_status,
            e.appointment_id, e.booking_code, e.queue_number, e.sale_id, e.sale_invoice_number,
            e.payment_posted_at, e.sync_status,
-           bp.nama_lengkap, bp.email
+           bp.nama_lengkap, bp.email, bp.mrn
     FROM bookings b
     JOIN booking_payments p ON p.booking_id = b.id
     LEFT JOIN booking_emr e ON e.booking_id = b.id
@@ -71,7 +73,10 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
     SELECT procedure_id, procedure_name, unit_price, quantity
     FROM booking_items WHERE booking_id = ${bookingId}`;
   const procedureIds = items.map((i) => Number(i.procedure_id));
-  const visitDate = String(bk.visit_date).slice(0, 10);
+  // postgres.js hands `date` columns back as JS Date objects — normalise to YYYY-MM-DD
+  const visitDate = bk.visit_date instanceof Date
+    ? bk.visit_date.toISOString().slice(0, 10)
+    : String(bk.visit_date).slice(0, 10);
 
   // ── Step 1: patient must exist (created during the wizard; if it vanished, fail loudly) ──
   const patientId = Number(bk.calq_patient_id);
@@ -112,17 +117,47 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
     }
   }
 
-  // ── Step 3: resolve the auto-created sale (latch: sale_id) ──
+  // ── Step 3: the sale that carries the money (latch: sale_id). API-created appointments
+  //     get no pre-visit sale from Calq, so we create it — but first probe for one a crashed
+  //     earlier retry may have left behind (never double-invoice). ──
   let saleId = bk.sale_id as string | null;
   if (!saleId) {
-    const sale = await findSaleForAppointment(creds, patientId, visitDate, procedureIds)
-      .catch(() => null);
+    const ourItems = items.map((i) => ({
+      referenceType: "PROCEDURE",
+      referenceId: Number(i.procedure_id),
+      quantity: Number(i.quantity),
+      unitPrice: Number(i.unit_price),
+    }));
+    let sale = await findExistingSale(
+      creds,
+      (bk.mrn as string | null) ?? null,
+      procedureIds,
+    ).catch(() => null);
     if (!sale) {
-      await recordFailure(
-        bookingId,
-        `Invoice Calq untuk appointment ${appointmentId} tidak ditemukan (pasien ${patientId}, ${visitDate}) — perlu dicek manual sebelum pembayaran diposting`,
-      );
-      return { ok: false, message: "sale tidak ditemukan" };
+      // Calq requires a roomId for PROCEDURE items. An API-created appointment usually has
+      // none assigned yet, so fall back to the configured default room
+      // (app_settings.calq_default_room_id / env CALQ_DEFAULT_ROOM_ID).
+      const appt = await getAppointment(creds, appointmentId).catch(() => null);
+      const settings = await appSettings().catch(() => ({} as Record<string, string>));
+      const defaultRoom = Number(
+        settings["calq_default_room_id"] ?? Deno.env.get("CALQ_DEFAULT_ROOM_ID") ?? "",
+      ) || null;
+      try {
+        sale = await createSale(creds, {
+          patientId,
+          items: ourItems,
+          roomId: appt?.roomId ?? defaultRoom,
+          ...(bk.medical_personnel_id ? { medicalPersonnelId: Number(bk.medical_personnel_id) } : {}),
+          notes: `Reservasi online ${bk.invoice_number} — ${bk.booking_code ?? ""}`.trim(),
+        });
+      } catch (err) {
+        await recordFailure(bookingId, describeCalqError("POST /sales gagal", err));
+        return { ok: false, message: "gagal membuat invoice" };
+      }
+    }
+    if (!sale?.id) {
+      await recordFailure(bookingId, "POST /sales tidak mengembalikan id invoice");
+      return { ok: false, message: "invoice tanpa id" };
     }
     saleId = String(sale.id);
     await sql`
