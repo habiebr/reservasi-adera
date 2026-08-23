@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "dev": "deno run --env-file=.env -A --watch server/main.ts",
+    "start": "deno run --env-file=.env -A server/main.ts",
+    "migrate": "deno run --env-file=.env -A server/migrate.ts",
+    "seed-admin": "deno run --env-file=.env -A server/seedAdmin.ts",
+    "test": "deno test shared/ server/"
+  },
+  "imports": {
+    "hono": "npm:hono@^4.6.0",
+    "hono/": "npm:/hono@^4.6.0/",
+    "postgres": "npm:postgres@^3.4.5",
+    "bcryptjs": "npm:bcryptjs@^2.4.3",
+    "@shared/": "./shared/"
+  },
+  "compilerOptions": {
+    "strict": true
+  },
+  "fmt": { "lineWidth": 100 }
+}
