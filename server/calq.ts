@@ -130,10 +130,12 @@ export async function findCalqPatientByMrn(
 }
 
 /**
- * Exact-phone match against mobilePhone or whatsappNumber. Calq stores phones inconsistently
- * (0812…, +62812…, 62812…), so both sides are canonicalised before comparing rather than
- * trusting the fuzzy `search` hit. Searched by the local 0-prefixed form, which is how the
- * numbers are typed into Calq; a null return may mean "not indexed" as much as "not found".
+ * Exact-phone match against mobilePhone or whatsappNumber. Probed on the sandbox: `?search`
+ * matches the stored string literally, not as a substring — a record saved as "6281…" is
+ * invisible to a search for "0812…", and vice versa. Both spellings are in the wild (this app
+ * writes the canonical 62-form; staff typing into Calq's own UI enter 0-form), so each is
+ * tried in turn. Hits are still re-checked with canonPhone, since `search` also matches on
+ * other fields entirely.
  */
 export async function findCalqPatientByPhone(
   creds: CalqCreds,
@@ -141,14 +143,17 @@ export async function findCalqPatientByPhone(
 ): Promise<CalqPatient | null> {
   const wanted = canonPhone(phone);
   if (!wanted) return null;
-  const local = "0" + wanted.slice(2);
-  const data = await calqGet(creds, `/patients?search=${encodeURIComponent(local)}`).catch(() =>
-    null
-  );
-  const list = Array.isArray(data) ? data : [];
-  return (list as CalqPatient[]).find(
-    (p) => canonPhone(p.mobilePhone) === wanted || canonPhone(p.whatsappNumber) === wanted,
-  ) ?? null;
+  for (const q of [wanted, "0" + wanted.slice(2)]) {
+    const data = await calqGet(creds, `/patients?search=${encodeURIComponent(q)}`).catch(() =>
+      null
+    );
+    const list = Array.isArray(data) ? (data as CalqPatient[]) : [];
+    const hit = list.find(
+      (p) => canonPhone(p.mobilePhone) === wanted || canonPhone(p.whatsappNumber) === wanted,
+    );
+    if (hit) return hit;
+  }
+  return null;
 }
 
 export interface NewCalqPatient {
