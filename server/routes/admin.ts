@@ -195,9 +195,10 @@ adminRoutes.get("/bundles", async (c) => {
   const creds = await loadCalqCreds();
   // Calq down → serve the catalog without prices; the UI shows a warning instead of locking up.
   const procedures = creds ? await getProcedures(creds).catch(() => null) : null;
+  const products = creds ? await getCalqProducts(creds).catch(() => []) : [];
   return c.json({
     priced: procedures !== null,
-    bundles: procedures ? priceBundles(bundles, procedures) : bundles,
+    bundles: procedures ? priceBundles(bundles, procedures, products) : bundles,
   });
 });
 

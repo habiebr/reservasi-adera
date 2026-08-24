@@ -4,6 +4,7 @@
 import { Hono } from "hono";
 import { sql } from "../db.ts";
 import {
+  getCalqProducts,
   getDoctorDaySlots,
   getDoctorSchedules,
   getPolyclinics,
@@ -170,10 +171,13 @@ publicRoutes.get("/calq/bundles", async (c) => {
     activeOnly: true,
     ids: cfg.allowedBundleIds.length > 0 ? cfg.allowedBundleIds : undefined,
   });
-  const procedures = await cached("procedures:all", () => getProcedures(creds));
+  const [procedures, products] = await Promise.all([
+    cached("procedures:all", () => getProcedures(creds)),
+    cached("products:all", () => getCalqProducts(creds).catch(() => [])),
+  ]);
   return c.json({
     dp: { enabled: cfg.dpEnabled, rule: cfg.dpRule, value: cfg.dpValue ?? null },
-    bundles: priceBundles(bundles, procedures)
+    bundles: priceBundles(bundles, procedures, products)
       .filter((b) => b.available && b.price > 0)
       .map((b) => ({
         id: b.id,

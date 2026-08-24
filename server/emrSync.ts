@@ -24,26 +24,33 @@ import { loadSmtpCreds, looksLikeEmail, sendEmail } from "./email.ts";
 import { renderInvoiceEmail } from "./emailTemplates.ts";
 import { groupBookingItemRows } from "./bundles.ts";
 
-/** Sale lines per procedure; the same procedure arriving via two bundles merges into one
- * line with summed quantity (Calq expects one row per referenceId). */
-function mergedProcedureItems(
-  rows: readonly Record<string, unknown>[],
-): { referenceType: string; referenceId: number; quantity: number; unitPrice: number }[] {
-  const byId = new Map<number, { referenceType: string; referenceId: number; quantity: number; unitPrice: number }>();
+interface SaleLine {
+  referenceType: string;
+  referenceId: number;
+  quantity: number;
+  unitPrice: number;
+}
+
+/** Sale lines per (referenceType, referenceId); the same item arriving via two bundles merges
+ * into one line with summed quantity (Calq expects one row per reference). */
+function mergedSaleItems(rows: readonly Record<string, unknown>[]): SaleLine[] {
+  const byKey = new Map<string, SaleLine>();
   for (const r of rows) {
-    const id = Number(r.procedure_id);
-    const existing = byId.get(id);
+    const referenceType = String(r.reference_type ?? "PROCEDURE");
+    const referenceId = Number(r.procedure_id);
+    const key = `${referenceType}:${referenceId}`;
+    const existing = byKey.get(key);
     if (existing) existing.quantity += Number(r.quantity);
     else {
-      byId.set(id, {
-        referenceType: "PROCEDURE",
-        referenceId: id,
+      byKey.set(key, {
+        referenceType,
+        referenceId,
         quantity: Number(r.quantity),
         unitPrice: Number(r.unit_price),
       });
     }
   }
-  return [...byId.values()];
+  return [...byKey.values()];
 }
 
 async function recordFailure(bookingId: string, error: string): Promise<void> {
@@ -93,9 +100,16 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
   }
 
   const items = await sql`
-    SELECT procedure_id, procedure_name, unit_price, quantity
+    SELECT procedure_id, procedure_name, unit_price, quantity, reference_type
     FROM booking_items WHERE booking_id = ${bookingId}`;
-  const procedureIds = [...new Set(items.map((i) => Number(i.procedure_id)))];
+  // the appointment carries tindakan only; obat/produk ride along on the sale
+  const procedureIds = [
+    ...new Set(
+      items
+        .filter((i) => String(i.reference_type ?? "PROCEDURE") === "PROCEDURE")
+        .map((i) => Number(i.procedure_id)),
+    ),
+  ];
   // postgres.js hands `date` columns back as JS Date objects — normalise to YYYY-MM-DD
   const visitDate = bk.visit_date instanceof Date
     ? bk.visit_date.toISOString().slice(0, 10)
@@ -145,7 +159,7 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
   //     earlier retry may have left behind (never double-invoice). ──
   let saleId = bk.sale_id as string | null;
   if (!saleId) {
-    const ourItems = mergedProcedureItems(items);
+    const ourItems = mergedSaleItems(items);
     let sale = await findExistingSale(
       creds,
       (bk.mrn as string | null) ?? null,
@@ -199,21 +213,23 @@ export async function runEmrSync(bookingId: string): Promise<{ ok: boolean; mess
         UPDATE booking_emr SET payment_posted_at = now(), updated_at = now()
         WHERE booking_id = ${bookingId}`;
     } else {
-      const saleProcItems = (sale.items ?? []).filter((i) => i.referenceType === "PROCEDURE");
-      const saleProcIds = new Set(saleProcItems.map((i) => Number(i.referenceId)));
-      const missing = procedureIds.filter((id) => !saleProcIds.has(id));
-      if (saleProcItems.length === 0 || missing.length > 0) {
-        // PATCH replaces the WHOLE list: keep every non-procedure line Calq put there, and
-        // send our complete procedure set.
+      const ours = mergedSaleItems(items);
+      const ourKeys = new Set(ours.map((i) => `${i.referenceType}:${i.referenceId}`));
+      const saleKeys = new Set(
+        (sale.items ?? []).map((i) => `${i.referenceType}:${Number(i.referenceId)}`),
+      );
+      const missing = ours.filter((i) => !saleKeys.has(`${i.referenceType}:${i.referenceId}`));
+      if ((sale.items ?? []).length === 0 || missing.length > 0) {
+        // PATCH replaces the WHOLE list: keep every line Calq put there that isn't ours
+        // (pharmacy add-ons during the visit, etc.), and send our complete set.
         const keep = (sale.items ?? [])
-          .filter((i) => i.referenceType !== "PROCEDURE")
+          .filter((i) => !ourKeys.has(`${i.referenceType}:${Number(i.referenceId)}`))
           .map((i) => ({
             referenceType: i.referenceType,
             referenceId: Number(i.referenceId),
             quantity: Number(i.quantity ?? 1),
             unitPrice: Number(i.unitPrice ?? 0),
           }));
-        const ours = mergedProcedureItems(items);
         try {
           await replaceSaleItems(creds, saleId, [...keep, ...ours]);
         } catch (err) {

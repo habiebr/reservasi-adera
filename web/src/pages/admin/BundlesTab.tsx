@@ -12,7 +12,10 @@ import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
 import { formatRupiah } from "@shared/pricing";
 import { cn } from "@/lib/utils";
 
+type ReferenceType = "PROCEDURE" | "PRODUCT";
+
 interface BundleItemRow {
+  referenceType: ReferenceType;
   procedureId: number;
   procedureName: string;
   quantity: number;
@@ -30,10 +33,13 @@ interface BundleRow {
   items: BundleItemRow[];
 }
 
-interface CalqProc {
+/** Unified catalog entry: a Calq tindakan or an obat/produk. */
+interface CatalogItem {
+  referenceType: ReferenceType;
   id: number;
   name: string;
   price: number;
+  hint?: string | null;
 }
 
 interface Draft {
@@ -41,15 +47,22 @@ interface Draft {
   name: string;
   description: string;
   active: boolean;
-  items: { procedureId: number; procedureName: string; quantity: number }[];
+  items: {
+    referenceType: ReferenceType;
+    procedureId: number;
+    procedureName: string;
+    quantity: number;
+  }[];
 }
+
+const itemKey = (t: ReferenceType, id: number) => `${t}:${id}`;
 
 const emptyDraft = (): Draft => ({ name: "", description: "", active: true, items: [] });
 
 export default function BundlesTab() {
   const [bundles, setBundles] = useState<BundleRow[] | null>(null);
   const [priced, setPriced] = useState(true);
-  const [procs, setProcs] = useState<CalqProc[] | null>(null);
+  const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -64,10 +77,36 @@ export default function BundlesTab() {
   }, []);
   useEffect(refresh, [refresh]);
 
+  // one searchable catalog over both tindakan and obat/produk
   useEffect(() => {
-    apiGet<{ procedures: CalqProc[] }>("/api/admin/calq/procedures")
-      .then((r) => setProcs(r.procedures.filter((p) => p.price > 0)))
-      .catch(() => setProcs(null));
+    Promise.all([
+      apiGet<{ procedures: { id: number; name: string; price: number }[] }>(
+        "/api/admin/calq/procedures",
+      ).catch(() => ({ procedures: [] })),
+      apiGet<{ products: { id: number; name: string; price: number; genericName: string | null }[] }>(
+        "/api/admin/calq/products",
+      ).catch(() => ({ products: [] })),
+    ]).then(([p, pr]) => {
+      setCatalog([
+        ...p.procedures
+          .filter((x) => x.price > 0)
+          .map((x): CatalogItem => ({
+            referenceType: "PROCEDURE",
+            id: x.id,
+            name: x.name,
+            price: x.price,
+          })),
+        ...pr.products
+          .filter((x) => x.price > 0)
+          .map((x): CatalogItem => ({
+            referenceType: "PRODUCT",
+            id: x.id,
+            name: x.name,
+            price: x.price,
+            hint: x.genericName,
+          })),
+      ]);
+    });
   }, []);
 
   const save = async () => {
@@ -107,7 +146,8 @@ export default function BundlesTab() {
         <div>
           <h2 className="font-display text-lg font-bold text-foreground">Paket Tindakan</h2>
           <p className="text-sm text-muted-foreground">
-            Gabungkan beberapa tindakan Calq dengan nama sendiri. Harga selalu mengikuti Calq.
+            Gabungkan tindakan dan obat/produk Calq dengan nama sendiri. Harga selalu mengikuti
+            Calq.
           </p>
         </div>
         <Button onClick={() => setDraft(emptyDraft())} className="gap-1">
@@ -127,7 +167,7 @@ export default function BundlesTab() {
         <BundleEditor
           draft={draft}
           setDraft={setDraft}
-          procs={procs}
+          catalog={catalog}
           saving={saving}
           onSave={save}
           onCancel={() => setDraft(null)}
@@ -171,6 +211,7 @@ export default function BundlesTab() {
                       description: b.description ?? "",
                       active: b.active,
                       items: b.items.map((i) => ({
+                        referenceType: i.referenceType ?? "PROCEDURE",
                         procedureId: i.procedureId,
                         procedureName: i.procedureName,
                         quantity: i.quantity,
@@ -193,12 +234,15 @@ export default function BundlesTab() {
             <div className="mt-3 space-y-1 border-t border-border pt-2">
               {b.items.map((i) => (
                 <div
-                  key={i.procedureId}
+                  key={itemKey(i.referenceType ?? "PROCEDURE", i.procedureId)}
                   className="flex items-center justify-between gap-3 text-xs"
                 >
                   <span className={cn("text-muted-foreground", i.missing && "text-destructive")}>
                     {i.quantity > 1 ? `${i.quantity}× ` : ""}
                     {i.procedureName}
+                    {i.referenceType === "PRODUCT" && (
+                      <span className="ml-1 text-[10px] uppercase text-muted-foreground">obat</span>
+                    )}
                     {i.missing ? " — tidak aktif di Calq" : ""}
                   </span>
                   {i.unitPrice !== undefined && !i.missing && (
@@ -238,41 +282,50 @@ export default function BundlesTab() {
 function BundleEditor({
   draft,
   setDraft,
-  procs,
+  catalog,
   saving,
   onSave,
   onCancel,
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
-  procs: CalqProc[] | null;
+  catalog: CatalogItem[] | null;
   saving: boolean;
   onSave: () => void;
   onCancel: () => void;
 }) {
   const [filter, setFilter] = useState("");
-  const chosen = useMemo(() => new Set(draft.items.map((i) => i.procedureId)), [draft.items]);
+  const chosen = useMemo(
+    () => new Set(draft.items.map((i) => itemKey(i.referenceType, i.procedureId))),
+    [draft.items],
+  );
   const results = useMemo(
     () =>
-      filter.trim().length < 2 ? [] : (procs ?? [])
-        .filter((p) => !chosen.has(p.id))
-        .filter((p) => p.name.toLowerCase().includes(filter.toLowerCase()))
+      filter.trim().length < 2 ? [] : (catalog ?? [])
+        .filter((p) => !chosen.has(itemKey(p.referenceType, p.id)))
+        .filter((p) =>
+          `${p.name} ${p.hint ?? ""}`.toLowerCase().includes(filter.toLowerCase())
+        )
         .slice(0, 8),
-    [procs, filter, chosen],
+    [catalog, filter, chosen],
   );
 
+  const findLive = (i: Draft["items"][number]) =>
+    catalog?.find((x) => x.referenceType === i.referenceType && x.id === i.procedureId);
+
   const total = useMemo(() => {
-    if (!procs) return null;
+    if (!catalog) return null;
     let sum = 0;
     for (const i of draft.items) {
-      const p = procs.find((x) => x.id === i.procedureId);
+      const p = catalog.find((x) => x.referenceType === i.referenceType && x.id === i.procedureId);
       if (!p) return null;
       sum += p.price * i.quantity;
     }
     return sum;
-  }, [procs, draft.items]);
+  }, [catalog, draft.items]);
 
-  const canSave = draft.name.trim().length > 0 && draft.items.length > 0;
+  const hasProcedure = draft.items.some((i) => i.referenceType === "PROCEDURE");
+  const canSave = draft.name.trim().length > 0 && draft.items.length > 0 && hasProcedure;
 
   return (
     <div className="space-y-4 rounded-xl border-2 border-primary/40 bg-card p-4">
@@ -309,12 +362,22 @@ function BundleEditor({
       <div className="space-y-2">
         <Label className="text-xs">Isi paket</Label>
         {draft.items.map((i) => {
-          const live = procs?.find((p) => p.id === i.procedureId);
+          const live = findLive(i);
           return (
             <div
-              key={i.procedureId}
+              key={itemKey(i.referenceType, i.procedureId)}
               className="flex items-center gap-2 rounded-lg border border-border px-3 py-2"
             >
+              <span
+                className={cn(
+                  "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                  i.referenceType === "PRODUCT"
+                    ? "bg-secondary text-muted-foreground"
+                    : "bg-primary-muted text-primary",
+                )}
+              >
+                {i.referenceType === "PRODUCT" ? "Obat" : "Tindakan"}
+              </span>
               <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                 {i.procedureName}
               </span>
@@ -332,7 +395,8 @@ function BundleEditor({
                   setDraft({
                     ...draft,
                     items: draft.items.map((x) =>
-                      x.procedureId === i.procedureId
+                      itemKey(x.referenceType, x.procedureId) ===
+                          itemKey(i.referenceType, i.procedureId)
                         ? { ...x, quantity: Math.max(1, Number(e.target.value) || 1) }
                         : x
                     ),
@@ -344,7 +408,10 @@ function BundleEditor({
                 onClick={() =>
                   setDraft({
                     ...draft,
-                    items: draft.items.filter((x) => x.procedureId !== i.procedureId),
+                    items: draft.items.filter((x) =>
+                      itemKey(x.referenceType, x.procedureId) !==
+                        itemKey(i.referenceType, i.procedureId)
+                    ),
                   })}
                 className="text-muted-foreground hover:text-destructive"
               >
@@ -358,28 +425,50 @@ function BundleEditor({
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder={procs ? "Cari tindakan Calq untuk ditambahkan…" : "Memuat tindakan dari Calq…"}
-            disabled={!procs}
+            placeholder={catalog
+              ? "Cari tindakan atau obat/produk untuk ditambahkan…"
+              : "Memuat katalog dari Calq…"}
+            disabled={!catalog}
             className="h-10 text-sm"
           />
           {results.length > 0 && (
             <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
               {results.map((p) => (
                 <button
-                  key={p.id}
+                  key={itemKey(p.referenceType, p.id)}
                   onClick={() => {
                     setDraft({
                       ...draft,
                       items: [
                         ...draft.items,
-                        { procedureId: p.id, procedureName: p.name, quantity: 1 },
+                        {
+                          referenceType: p.referenceType,
+                          procedureId: p.id,
+                          procedureName: p.name,
+                          quantity: 1,
+                        },
                       ],
                     });
                     setFilter("");
                   }}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-secondary"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-secondary"
                 >
-                  <span className="min-w-0 flex-1 truncate text-foreground">{p.name}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                      p.referenceType === "PRODUCT"
+                        ? "bg-secondary text-muted-foreground"
+                        : "bg-primary-muted text-primary",
+                    )}
+                  >
+                    {p.referenceType === "PRODUCT" ? "Obat" : "Tindakan"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-foreground">
+                    {p.name}
+                    {p.hint && (
+                      <span className="ml-1 text-xs text-muted-foreground">({p.hint})</span>
+                    )}
+                  </span>
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {formatRupiah(p.price)}
                   </span>
@@ -402,6 +491,11 @@ function BundleEditor({
           {total !== null && draft.items.length > 0 && (
             <span className="text-sm font-semibold text-primary">
               Total {formatRupiah(total)}
+            </span>
+          )}
+          {draft.items.length > 0 && !hasProcedure && (
+            <span className="text-xs text-destructive">
+              Paket wajib memuat minimal satu tindakan.
             </span>
           )}
         </div>

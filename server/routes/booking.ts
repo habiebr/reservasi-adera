@@ -30,6 +30,7 @@ import { runEmrSync } from "../emrSync.ts";
  * bundle (paket) it came from so summaries can regroup it. */
 type BookingItem = PricedItem & {
   procedureId: number;
+  referenceType: "PROCEDURE" | "PRODUCT";
   bundleId?: string;
   bundleName?: string;
 };
@@ -275,6 +276,7 @@ bookingRoutes.post("/create", async (c) => {
       for (const i of b.items) {
         items.push({
           procedureId: i.procedureId,
+          referenceType: i.referenceType,
           name: i.procedureName,
           unitPrice: i.unitPrice,
           quantity: i.quantity,
@@ -296,6 +298,7 @@ bookingRoutes.post("/create", async (c) => {
       }
       items.push({
         procedureId: proc.id,
+        referenceType: "PROCEDURE",
         name: proc.name,
         unitPrice: procedurePrice(proc),
         quantity: 1,
@@ -303,6 +306,11 @@ bookingRoutes.post("/create", async (c) => {
         downPaymentAmount: Number(proc.downPaymentAmount ?? 0),
       });
     }
+  }
+
+  // Calq appointments carry procedureId only — a product-only selection can't be registered.
+  if (!items.some((i) => i.referenceType === "PROCEDURE")) {
+    return c.json({ error: "Pilihan harus memuat minimal satu tindakan." }, 400);
   }
   const dpCfg = { dpEnabled: cfg.dpEnabled, dpRule: cfg.dpRule, dpValue: cfg.dpValue };
   const total = totalAmount(items);
@@ -374,10 +382,11 @@ bookingRoutes.post("/create", async (c) => {
       for (const item of items) {
         await tx`
           INSERT INTO booking_items (
-            booking_id, procedure_id, procedure_name, unit_price, quantity, bundle_id, bundle_name
+            booking_id, procedure_id, procedure_name, unit_price, quantity,
+            bundle_id, bundle_name, reference_type
           ) VALUES (
             ${id}, ${item.procedureId}, ${item.name}, ${item.unitPrice}, ${item.quantity},
-            ${item.bundleId ?? null}, ${item.bundleName ?? null}
+            ${item.bundleId ?? null}, ${item.bundleName ?? null}, ${item.referenceType}
           )`;
       }
       for (const f of cfg.customFields) {

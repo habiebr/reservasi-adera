@@ -2,10 +2,27 @@
 // display name. Prices are never stored — priceBundles() attaches live Calq prices so every
 // consumer (admin list, public wizard, booking create) sees the same number.
 import { sql } from "./db.ts";
-import { getProcedures, procedurePrice, type CalqCreds, type CalqProcedure } from "./calq.ts";
+import {
+  getCalqProducts,
+  getProcedures,
+  procedurePrice,
+  type CalqCreds,
+  type CalqProcedure,
+  type CalqProduct,
+} from "./calq.ts";
+
+/** Calq sale-item kinds this app can bill. Appointments only carry PROCEDURE ids. */
+export type ReferenceType = "PROCEDURE" | "PRODUCT";
+
+export function productPrice(p: CalqProduct): number {
+  const special = Number(p.specialPrice ?? 0);
+  const base = Number(p.sellingPrice ?? 0);
+  return special > 0 ? special : base;
+}
 
 export interface BundleItem {
-  procedureId: number;
+  referenceType: ReferenceType;
+  procedureId: number; // procedure id, or product id when referenceType is PRODUCT
   procedureName: string;
   quantity: number;
 }
@@ -45,7 +62,7 @@ export async function listBundles(opts: { activeOnly?: boolean; ids?: string[] }
     ORDER BY name`;
   if (rows.length === 0) return [];
   const items = await sql`
-    SELECT bundle_id, procedure_id, procedure_name, quantity
+    SELECT bundle_id, procedure_id, procedure_name, quantity, reference_type
     FROM bundle_items WHERE bundle_id IN ${sql(rows.map((r) => r.id as string))}
     ORDER BY sort_order`;
   return rows.map((r) => ({
@@ -56,6 +73,7 @@ export async function listBundles(opts: { activeOnly?: boolean; ids?: string[] }
     items: items
       .filter((i) => i.bundle_id === r.id)
       .map((i) => ({
+        referenceType: (i.reference_type as ReferenceType) ?? "PROCEDURE",
         procedureId: Number(i.procedure_id),
         procedureName: i.procedure_name as string,
         quantity: Number(i.quantity),
@@ -63,12 +81,30 @@ export async function listBundles(opts: { activeOnly?: boolean; ids?: string[] }
   }));
 }
 
-/** Attach live Calq prices + DP config. Pass pre-fetched procedures to share one fetch. */
-export function priceBundles(bundles: Bundle[], procedures: CalqProcedure[]): PricedBundle[] {
-  const byId = new Map(procedures.filter((p) => p.isActive).map((p) => [p.id, p]));
+/** Attach live Calq prices + DP config. Pass pre-fetched catalogs to share one fetch. */
+export function priceBundles(
+  bundles: Bundle[],
+  procedures: CalqProcedure[],
+  products: CalqProduct[] = [],
+): PricedBundle[] {
+  const procById = new Map(procedures.filter((p) => p.isActive).map((p) => [p.id, p]));
+  const prodById = new Map(products.filter((p) => !p.deletedAt).map((p) => [p.id, p]));
   return bundles.map((b) => {
     const items: PricedBundleItem[] = b.items.map((i) => {
-      const proc = byId.get(i.procedureId);
+      if (i.referenceType === "PRODUCT") {
+        const prod = prodById.get(i.procedureId);
+        const unitPrice = prod ? productPrice(prod) : 0;
+        return {
+          ...i,
+          procedureName: prod?.name ?? i.procedureName,
+          unitPrice,
+          // products carry no Calq DP config
+          isDownPayment: false,
+          downPaymentAmount: 0,
+          missing: !prod || unitPrice <= 0,
+        };
+      }
+      const proc = procById.get(i.procedureId);
       const unitPrice = proc ? procedurePrice(proc) : 0;
       return {
         ...i,
@@ -101,8 +137,12 @@ export async function pricedBundles(
 ): Promise<PricedBundle[]> {
   const bundles = await listBundles(opts);
   if (bundles.length === 0) return [];
-  const procedures = await getProcedures(creds); // all specializations — bundles may span them
-  return priceBundles(bundles, procedures);
+  // bundles may span specializations, and may mix procedures with products
+  const [procedures, products] = await Promise.all([
+    getProcedures(creds),
+    getCalqProducts(creds).catch(() => [] as CalqProduct[]),
+  ]);
+  return priceBundles(bundles, procedures, products);
 }
 
 /**
@@ -145,7 +185,12 @@ export interface BundleInput {
   name: string;
   description?: string;
   active?: boolean;
-  items: { procedureId: number; procedureName?: string; quantity?: number }[];
+  items: {
+    referenceType: ReferenceType;
+    procedureId: number;
+    procedureName?: string;
+    quantity?: number;
+  }[];
 }
 
 export function parseBundleInput(body: unknown): BundleInput | string {
@@ -157,17 +202,19 @@ export function parseBundleInput(body: unknown): BundleInput | string {
     .map((i) => {
       const it = (i ?? {}) as Record<string, unknown>;
       return {
+        referenceType: (it.referenceType === "PRODUCT" ? "PRODUCT" : "PROCEDURE") as ReferenceType,
         procedureId: Number(it.procedureId) || 0,
         procedureName: String(it.procedureName ?? "").trim(),
         quantity: Math.max(1, Math.floor(Number(it.quantity) || 1)),
       };
     })
     .filter((i) => i.procedureId > 0);
-  if (items.length === 0) return "Paket butuh minimal satu tindakan.";
-  const seen = new Set<number>();
+  if (items.length === 0) return "Paket butuh minimal satu tindakan atau produk.";
+  const seen = new Set<string>();
   for (const i of items) {
-    if (seen.has(i.procedureId)) return "Tindakan yang sama tidak boleh dobel dalam satu paket.";
-    seen.add(i.procedureId);
+    const key = `${i.referenceType}:${i.procedureId}`;
+    if (seen.has(key)) return "Item yang sama tidak boleh dobel dalam satu paket.";
+    seen.add(key);
   }
   return {
     name,
@@ -200,10 +247,12 @@ export async function saveBundle(input: BundleInput, id?: string): Promise<strin
     for (let i = 0; i < input.items.length; i++) {
       const it = input.items[i];
       await tx`
-        INSERT INTO bundle_items (bundle_id, sort_order, procedure_id, procedure_name, quantity)
-        VALUES (${bundleId}, ${i}, ${it.procedureId}, ${it.procedureName ?? ""}, ${
-        it.quantity ?? 1
-      })`;
+        INSERT INTO bundle_items (
+          bundle_id, sort_order, procedure_id, procedure_name, quantity, reference_type
+        ) VALUES (
+          ${bundleId}, ${i}, ${it.procedureId}, ${it.procedureName ?? ""}, ${it.quantity ?? 1},
+          ${it.referenceType}
+        )`;
     }
     return bundleId;
   });
