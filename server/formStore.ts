@@ -8,6 +8,7 @@ import type {
   FormBlock,
   FormDefinition,
   FormPage,
+  ScreeningQuestion,
 } from "@shared/formTypes.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -61,6 +62,7 @@ export async function assembleDefinition(formId: string): Promise<FormDefinition
         if (b.dp_value != null) config.dpValue = Number(b.dp_value);
         if (b.consent_text != null) config.consentText = b.consent_text as string;
         if (b.info_body != null) config.infoBody = b.info_body as string;
+        if (b.require_ack != null) config.requireAck = Boolean(b.require_ack);
         if (b.kind === "poli_picker") {
           config.allowedSpecializations = specs
             .filter((s) => s.block_id === b.id)
@@ -83,6 +85,16 @@ export async function assembleDefinition(formId: string): Promise<FormDefinition
               fieldType: f.field_type as CustomField["fieldType"],
               options: (f.options as string[] | null) ?? [],
               required: Boolean(f.required),
+            }));
+        }
+        if (b.kind === "screening") {
+          config.screeningQuestions = fields
+            .filter((f) => f.block_id === b.id)
+            .map((f): ScreeningQuestion => ({
+              id: f.id as string,
+              text: f.label as string,
+              blockAnswer: (f.block_answer as ScreeningQuestion["blockAnswer"]) ?? "",
+              blockMessage: (f.block_message as string | null) ?? undefined,
             }));
         }
         return {
@@ -145,6 +157,7 @@ export async function saveDefinition(formId: string, def: FormDefinition): Promi
           dp_value: c.dpValue ?? null,
           consent_text: c.consentText ?? null,
           info_body: c.infoBody ?? null,
+          require_ack: c.requireAck ?? null,
         };
         await tx`
           INSERT INTO form_blocks ${tx({ id: blockId, ...cols })}
@@ -174,7 +187,28 @@ export async function saveDefinition(formId: string, def: FormDefinition): Promi
             ON CONFLICT DO NOTHING`;
         }
 
-        const fieldsWanted = block.kind === "patient_data" ? (c.customFields ?? []) : [];
+        // patient_data custom fields and screening questions share the form_fields table
+        const fieldsWanted = block.kind === "patient_data"
+          ? (c.customFields ?? []).map((f) => ({
+            id: f.id,
+            label: f.label ?? "",
+            field_type: f.fieldType as string,
+            options: f.options ?? [],
+            required: Boolean(f.required),
+            block_answer: null as string | null,
+            block_message: null as string | null,
+          }))
+          : block.kind === "screening"
+          ? (c.screeningQuestions ?? []).map((q) => ({
+            id: q.id,
+            label: q.text ?? "",
+            field_type: "screening",
+            options: [] as string[],
+            required: true,
+            block_answer: q.blockAnswer || null,
+            block_message: q.blockMessage?.trim() || null,
+          }))
+          : [];
         for (let fi = 0; fi < fieldsWanted.length; fi++) {
           const f = fieldsWanted[fi];
           const fieldId = keepId(f.id);
@@ -182,10 +216,12 @@ export async function saveDefinition(formId: string, def: FormDefinition): Promi
           const fcols = {
             block_id: blockId,
             sort_order: fi,
-            label: f.label ?? "",
-            field_type: f.fieldType,
-            options: f.options ?? [],
-            required: Boolean(f.required),
+            label: f.label,
+            field_type: f.field_type,
+            options: f.options,
+            required: f.required,
+            block_answer: f.block_answer,
+            block_message: f.block_message,
           };
           await tx`
             INSERT INTO form_fields ${tx({ id: fieldId, ...fcols })}
@@ -223,6 +259,7 @@ export interface BookingConfig {
   maxDaysAhead: number;
   allowMrn: boolean;
   customFields: { id: string; label: string; required: boolean }[];
+  screeningRules: { id: string; label: string; blockAnswer: string; blockMessage?: string }[];
 }
 
 export async function bookingConfigForForm(formId: string): Promise<BookingConfig> {
@@ -233,6 +270,8 @@ export async function bookingConfigForForm(formId: string): Promise<BookingConfi
   const schedule = flat.find((b) => b.kind === "schedule_picker");
   const lookup = flat.find((b) => b.kind === "patient_lookup");
   const data = flat.find((b) => b.kind === "patient_data");
+  const screenings = flat.filter((b) => b.kind === "screening" && b.enabled);
+  const screeningQuestions = screenings.flatMap((s) => s.config.screeningQuestions ?? []);
   return {
     allowedSpecializationIds: (poli?.config.allowedSpecializations ?? []).map((s) => s.id),
     allowedProcedureIds: (pricing?.config.allowedProcedures ?? []).map((p) => p.id),
@@ -243,10 +282,22 @@ export async function bookingConfigForForm(formId: string): Promise<BookingConfi
     dpValue: pricing?.config.dpValue,
     maxDaysAhead: schedule?.config.maxDaysAhead ?? 30,
     allowMrn: lookup?.config.allowMrn ?? true,
-    customFields: (data?.config.customFields ?? []).map((f) => ({
-      id: f.id,
-      label: f.label,
-      required: f.required,
-    })),
+    customFields: [
+      ...(data?.config.customFields ?? []).map((f) => ({
+        id: f.id,
+        label: f.label,
+        required: f.required,
+      })),
+      // screening answers are stored (and required) like custom fields
+      ...screeningQuestions.map((q) => ({ id: q.id, label: q.text, required: true })),
+    ],
+    screeningRules: screeningQuestions
+      .filter((q) => q.blockAnswer)
+      .map((q) => ({
+        id: q.id,
+        label: q.text,
+        blockAnswer: q.blockAnswer as string,
+        blockMessage: q.blockMessage,
+      })),
   };
 }

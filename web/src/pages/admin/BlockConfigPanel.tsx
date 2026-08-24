@@ -2,7 +2,12 @@
 // degrade to plain id text when Calq is unreachable, so the builder never locks up.
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { BLOCK_LABELS, type CustomField, type FormBlock } from "@shared/formTypes";
+import {
+  BLOCK_LABELS,
+  type CustomField,
+  type FormBlock,
+  type ScreeningQuestion,
+} from "@shared/formTypes";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -149,15 +154,31 @@ export default function BlockConfigPanel({
       )}
 
       {block.kind === "info_page" && (
-        <div className="space-y-1.5">
-          <Label className="text-xs">Isi teks (baris baru = paragraf)</Label>
-          <Textarea
-            rows={6}
-            value={c.infoBody ?? ""}
-            onChange={(e) => setConfig({ infoBody: e.target.value })}
-            className="text-sm"
-          />
-        </div>
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Isi teks (baris baru = paragraf)</Label>
+            <Textarea
+              rows={6}
+              value={c.infoBody ?? ""}
+              onChange={(e) => setConfig({ infoBody: e.target.value })}
+              className="text-sm"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <Checkbox
+              checked={c.requireAck ?? false}
+              onCheckedChange={(v) => setConfig({ requireAck: v === true })}
+            />
+            Wajib centang "sudah membaca" sebelum lanjut
+          </label>
+        </>
+      )}
+
+      {block.kind === "screening" && (
+        <ScreeningEditor
+          questions={c.screeningQuestions ?? []}
+          onChange={(screeningQuestions) => setConfig({ screeningQuestions })}
+        />
       )}
     </div>
   );
@@ -467,6 +488,78 @@ function BundleAllowList({
       {allowed.length > 0 && (
         <p className="text-[11px] text-muted-foreground">{allowed.length} paket dipilih.</p>
       )}
+    </div>
+  );
+}
+
+function ScreeningEditor({
+  questions,
+  onChange,
+}: {
+  questions: ScreeningQuestion[];
+  onChange: (q: ScreeningQuestion[]) => void;
+}) {
+  const patch = (id: string, p: Partial<ScreeningQuestion>) =>
+    onChange(questions.map((q) => (q.id === id ? { ...q, ...p } : q)));
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs">Pertanyaan skrining (jawaban Ya / Tidak)</Label>
+      {questions.map((q) => (
+        <div key={q.id} className="space-y-2 rounded-lg border border-border p-2">
+          <div className="flex items-start gap-2">
+            <Textarea
+              rows={2}
+              value={q.text}
+              onChange={(e) => patch(q.id, { text: e.target.value })}
+              placeholder="Contoh: Apakah Anda sedang demam?"
+              className="flex-1 text-sm"
+            />
+            <button
+              onClick={() => onChange(questions.filter((x) => x.id !== q.id))}
+              className="mt-1 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="shrink-0 text-xs text-muted-foreground">Jawaban penghalang</Label>
+            <select
+              value={q.blockAnswer ?? ""}
+              onChange={(e) =>
+                patch(q.id, { blockAnswer: e.target.value as ScreeningQuestion["blockAnswer"] })}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Tidak ada</option>
+              <option value="Ya">Ya</option>
+              <option value="Tidak">Tidak</option>
+            </select>
+          </div>
+          {q.blockAnswer && (
+            <Input
+              value={q.blockMessage ?? ""}
+              onChange={(e) => patch(q.id, { blockMessage: e.target.value })}
+              placeholder="Pesan saat terhalang (opsional)"
+              className="h-9 text-sm"
+            />
+          )}
+        </div>
+      ))}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() =>
+          onChange([
+            ...questions,
+            { id: crypto.randomUUID(), text: "", blockAnswer: "", blockMessage: "" },
+          ])}
+        className="w-full gap-1 border-dashed"
+      >
+        <Plus className="h-3.5 w-3.5" /> Tambah pertanyaan
+      </Button>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Jika pasien memilih jawaban penghalang, reservasi berhenti dengan pesan tersebut. Semua
+        jawaban tersimpan di detail reservasi.
+      </p>
     </div>
   );
 }

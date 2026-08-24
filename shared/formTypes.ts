@@ -10,7 +10,8 @@ export type BlockKind =
   | "patient_lookup"
   | "patient_data"
   | "pricing_payment"
-  | "summary_consent";
+  | "summary_consent"
+  | "screening";
 
 /** Core blocks: exactly one each, enabled, in this relative order across the whole form. */
 export const SEQUENCE: BlockKind[] = [
@@ -32,6 +33,7 @@ export const BLOCK_LABELS: Record<BlockKind, string> = {
   patient_data: "Data Pasien",
   pricing_payment: "Tindakan & Pembayaran",
   summary_consent: "Ringkasan & Persetujuan",
+  screening: "Skrining",
 };
 
 export interface CustomField {
@@ -40,6 +42,15 @@ export interface CustomField {
   fieldType: "text" | "textarea" | "choice";
   options: string[];
   required: boolean;
+}
+
+/** A Ya/Tidak screening question. When the patient answers `blockAnswer`, the flow stops
+ * with `blockMessage` (or a default) — e.g. pre-vaccination contraindication checks. */
+export interface ScreeningQuestion {
+  id: string;
+  text: string;
+  blockAnswer?: "Ya" | "Tidak" | "";
+  blockMessage?: string;
 }
 
 export interface AllowedRef {
@@ -75,6 +86,10 @@ export interface BlockConfig {
   consentText?: string;
   // info_page
   infoBody?: string;
+  /** info_page: patient must tick "saya telah membaca" before continuing */
+  requireAck?: boolean;
+  // screening
+  screeningQuestions?: ScreeningQuestion[];
 }
 
 export interface FormBlock {
@@ -170,6 +185,13 @@ export function validateDefinition(def: FormDefinition): string[] {
           }
         }
       }
+      if (block.kind === "screening" && block.enabled) {
+        const qs = block.config.screeningQuestions ?? [];
+        if (qs.length === 0) problems.push("Blok Skrining belum punya pertanyaan.");
+        if (qs.some((q) => !q.text.trim())) {
+          problems.push("Ada pertanyaan skrining tanpa teks.");
+        }
+      }
     }
   }
 
@@ -200,6 +222,7 @@ export function newBlock(kind: BlockKind, id: string): FormBlock {
     config.consentText =
       "Saya menyetujui pemrosesan data pribadi saya untuk keperluan reservasi dan layanan kesehatan di Klinik Adera.";
   }
+  if (kind === "screening") config.screeningQuestions = [];
   return { id, kind, enabled: true, config };
 }
 
@@ -214,6 +237,7 @@ export function defaultDefinition(makeId: () => string): FormDefinition {
     pricing_payment: "Pembayaran",
     summary_consent: "Konfirmasi",
     info_page: "",
+    screening: "Skrining",
   };
   const pages: FormPage[] = [];
   for (const kind of SEQUENCE) {

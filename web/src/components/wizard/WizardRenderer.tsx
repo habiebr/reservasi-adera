@@ -15,7 +15,9 @@ import SchedulePicker from "./SchedulePicker";
 import PatientLookup from "./PatientLookup";
 import PatientDataForm from "./PatientDataForm";
 import PricingPayment from "./PricingPayment";
+import ScreeningBlock from "./ScreeningBlock";
 import SummaryConsent from "./SummaryConsent";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   emptyPatient,
   pageComplete,
@@ -32,6 +34,7 @@ const BLOCKS: Record<string, (p: BlockProps) => JSX.Element | null> = {
   patient_data: PatientDataForm,
   pricing_payment: PricingPayment,
   summary_consent: SummaryConsent,
+  screening: ScreeningBlock,
 };
 
 /** Choices already made on earlier pages, so the patient stays oriented while stepping. */
@@ -84,15 +87,38 @@ function CarriedSummary({ rows }: { rows: { label: string; value: string }[] }) 
   );
 }
 
-function InfoBlock({ block }: { block: FormBlock }) {
+function InfoBlock({
+  block,
+  data,
+  update,
+}: {
+  block: FormBlock;
+  data: WizardData;
+  update: (patch: Partial<WizardData>) => void;
+}) {
   return (
-    <div className="flex gap-3 rounded-xl border border-info/30 bg-info/5 p-4">
-      <Info className="mt-0.5 h-5 w-5 shrink-0 text-info" />
-      <div className="text-sm text-foreground">
-        {(block.config.infoBody ?? "").split("\n").map((line, i) => (
-          <p key={i} className="mb-1.5 last:mb-0">{line}</p>
-        ))}
+    <div className="rounded-xl border border-info/30 bg-info/5 p-4">
+      <div className="flex gap-3">
+        <Info className="mt-0.5 h-5 w-5 shrink-0 text-info" />
+        <div className="text-sm text-foreground">
+          {(block.config.infoBody ?? "").split("\n").map((line, i) => (
+            <p key={i} className="mb-1.5 last:mb-0">{line}</p>
+          ))}
+        </div>
       </div>
+      {block.config.requireAck && (
+        <label className="mt-3 flex cursor-pointer items-start gap-2.5 border-t border-info/20 pt-3">
+          <Checkbox
+            checked={Boolean(data.acks[block.id])}
+            onCheckedChange={(v) =>
+              update({ acks: { ...data.acks, [block.id]: v === true } })}
+            className="mt-0.5"
+          />
+          <span className="text-sm text-foreground">
+            Saya telah membaca dan memahami informasi di atas.
+          </span>
+        </label>
+      )}
     </div>
   );
 }
@@ -121,11 +147,16 @@ export default function WizardRenderer({
         const raw = sessionStorage.getItem(draftKey);
         if (raw) {
           const parsed = JSON.parse(raw) as WizardData;
-          return { ...parsed, consent: false, bundleIds: parsed.bundleIds ?? [] };
+          return {
+            ...parsed,
+            consent: false,
+            bundleIds: parsed.bundleIds ?? [],
+            acks: parsed.acks ?? {},
+          };
         }
       } catch { /* fresh start */ }
     }
-    return { patient: { ...emptyPatient }, answers: {}, procedureIds: [], bundleIds: [] };
+    return { patient: { ...emptyPatient }, answers: {}, acks: {}, procedureIds: [], bundleIds: [] };
   });
 
   useEffect(() => {
@@ -218,7 +249,9 @@ export default function WizardRenderer({
           <h2 className="font-display text-lg font-bold text-foreground">{page.title}</h2>
         )}
         {page.blocks.map((block) => {
-          if (block.kind === "info_page") return <InfoBlock key={block.id} block={block} />;
+          if (block.kind === "info_page") {
+            return <InfoBlock key={block.id} block={block} data={data} update={update} />;
+          }
           const Cmp = BLOCKS[block.kind];
           if (!Cmp) return null;
           return (

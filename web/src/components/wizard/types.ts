@@ -34,6 +34,8 @@ export interface WizardData {
   maskedName?: string;
   patient: WizardPatient;
   answers: Record<string, string>;
+  /** info_page requireAck: blockId → "sudah membaca" ticked */
+  acks: Record<string, boolean>;
   // pricing
   procedureIds: number[];
   bundleIds: string[];
@@ -82,6 +84,16 @@ export function visiblePages(def: FormDefinition, data: WizardData): FormPage[] 
 export function pageComplete(page: FormPage, data: WizardData): boolean {
   for (const block of page.blocks) {
     switch (block.kind) {
+      case "info_page":
+        if (block.config.requireAck && !data.acks[block.id]) return false;
+        break;
+      case "screening":
+        for (const q of block.config.screeningQuestions ?? []) {
+          const answer = (data.answers[q.id] ?? "").trim();
+          if (!answer) return false;
+          if (q.blockAnswer && answer === q.blockAnswer) return false;
+        }
+        break;
       case "poli_picker":
         if (!data.specializationId) return false;
         break;

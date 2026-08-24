@@ -235,11 +235,20 @@ bookingRoutes.post("/create", async (c) => {
     return c.json({ error: "Tanggal di luar rentang reservasi." }, 400);
   }
 
-  // required custom fields
+  // required custom fields (incl. screening questions)
   const answers = (body.answers ?? {}) as Record<string, string>;
   for (const f of cfg.customFields) {
     if (f.required && !String(answers[f.id] ?? "").trim()) {
       return c.json({ error: `Isian "${f.label}" wajib diisi.` }, 400);
+    }
+  }
+  // screening gate: a blocking answer stops the reservation
+  for (const r of cfg.screeningRules) {
+    if (String(answers[r.id] ?? "").trim() === r.blockAnswer) {
+      return c.json({
+        error: r.blockMessage?.trim() ||
+          "Berdasarkan jawaban skrining, reservasi online tidak dapat dilanjutkan. Silakan hubungi klinik.",
+      }, 400);
     }
   }
 

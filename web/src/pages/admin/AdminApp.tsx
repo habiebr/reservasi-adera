@@ -14,6 +14,7 @@ import {
   Settings2,
 } from "lucide-react";
 import BundlesTab from "./BundlesTab";
+import CalqBrowserTab from "./CalqBrowserTab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +31,7 @@ const TABS = [
   { id: "forms", label: "Form", icon: LayoutList },
   { id: "bundles", label: "Paket", icon: Package },
   { id: "bookings", label: "Reservasi", icon: ClipboardList },
-  { id: "calq", label: "Dokter & Jadwal", icon: CalendarClock },
+  { id: "calq", label: "Data Calq", icon: CalendarClock },
   { id: "failures", label: "Gagal Bayar", icon: FileWarning },
   { id: "settings", label: "Pengaturan", icon: Settings2 },
 ] as const;
@@ -98,7 +99,7 @@ export default function AdminApp() {
         {tab === "forms" && <FormsTab />}
         {tab === "bundles" && <BundlesTab />}
         {tab === "bookings" && <BookingsTab />}
-        {tab === "calq" && <CalqTab />}
+        {tab === "calq" && <CalqBrowserTab />}
         {tab === "failures" && <FailuresTab />}
         {tab === "settings" && <SettingsTab />}
       </main>
@@ -440,102 +441,6 @@ function BookingsTab() {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-// ── Calq read-only tab ──
-
-interface CalqPoli {
-  id: number;
-  name: string;
-  specializations: { id: number; name: string; bookingOrderType: string }[];
-}
-interface CalqDoctor {
-  id: number;
-  name: string;
-  sessionDuration: number;
-  bookingOrderType: string;
-  schedules: { dayOfWeek: number; startTime: string; endTime: string }[];
-}
-
-const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-
-function CalqTab() {
-  const [polis, setPolis] = useState<CalqPoli[] | null>(null);
-  const [env, setEnv] = useState("");
-  const [specId, setSpecId] = useState<number | null>(null);
-  const [doctors, setDoctors] = useState<CalqDoctor[] | null>(null);
-
-  useEffect(() => {
-    apiGet<{ env: string; polis: CalqPoli[] }>("/api/admin/calq/polis").then((r) => {
-      setPolis(r.polis);
-      setEnv(r.env);
-    });
-  }, []);
-  useEffect(() => {
-    if (!specId) return;
-    setDoctors(null);
-    apiGet<{ doctors: CalqDoctor[] }>(`/api/admin/calq/doctors?specializationId=${specId}`).then(
-      (r) => setDoctors(r.doctors),
-    );
-  }, [specId]);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg font-bold text-foreground">Dokter & Jadwal (Calq)</h2>
-        {env && <span className="chip chip-info">env: {env}</span>}
-      </div>
-      <p className="rounded-lg bg-info/5 p-3 text-sm text-muted-foreground">
-        Data dokter dan jadwal praktik dikelola di Calq. Halaman ini hanya menampilkan.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {(polis ?? []).flatMap((p) =>
-          p.specializations.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setSpecId(s.id)}
-              className={cn(
-                "rounded-full border-2 px-3 py-1 text-sm transition-all",
-                specId === s.id
-                  ? "border-primary bg-primary-muted text-primary"
-                  : "border-border bg-card text-muted-foreground hover:border-primary/60",
-              )}
-            >
-              {s.name}
-            </button>
-          ))
-        )}
-      </div>
-      {specId && doctors && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {doctors.map((d) => (
-            <div key={d.id} className="rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-bold text-foreground">{d.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {d.bookingOrderType === "EXACT_TIME"
-                  ? `Per janji ${d.sessionDuration} menit`
-                  : "Sistem antrean"}
-              </p>
-              <div className="mt-2 space-y-1">
-                {d.schedules
-                  .slice()
-                  .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime))
-                  .map((s, i) => (
-                    <p key={i} className="text-xs text-foreground">
-                      <span className="inline-block w-16 font-medium">{DAYS[s.dayOfWeek]}</span>
-                      <span className="tabular-nums">{s.startTime} – {s.endTime}</span>
-                    </p>
-                  ))}
-              </div>
-            </div>
-          ))}
-          {doctors.length === 0 && (
-            <p className="text-sm text-muted-foreground">Tidak ada dokter di spesialisasi ini.</p>
-          )}
-        </div>
-      )}
     </div>
   );
 }

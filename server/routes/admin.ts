@@ -3,6 +3,10 @@ import { Hono } from "hono";
 import { sql, appSettings, setAppSetting } from "../db.ts";
 import { login, logout, requireAdmin, type AdminClaims } from "../auth.ts";
 import {
+  getCalqPaymentMethods,
+  getCalqProducts,
+  getCalqRooms,
+  getCalqVaccines,
   getDoctorSchedules,
   getPolyclinics,
   getProcedures,
@@ -335,6 +339,67 @@ adminRoutes.get("/calq/procedures", async (c) => {
         isDownPayment: Boolean(p.isDownPayment),
         downPaymentAmount: Number(p.downPaymentAmount ?? 0),
       })),
+  });
+});
+
+// ── Calq master-data browse (Data Calq tab; read-only mirrors) ──
+
+adminRoutes.get("/calq/products", async (c) => {
+  const creds = await loadCalqCreds();
+  if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
+  const products = await getCalqProducts(creds);
+  return c.json({
+    products: products
+      .filter((p) => !p.deletedAt)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        genericName: p.genericName,
+        manufacturer: p.manufacturer,
+        sku: p.sku,
+        form: p.form,
+        dosage: p.dosage && p.dosageUnit ? `${p.dosage} ${p.dosageUnit}` : p.dosage,
+        price: Number(p.specialPrice ?? 0) > 0 ? Number(p.specialPrice) : Number(p.sellingPrice ?? 0),
+      })),
+  });
+});
+
+adminRoutes.get("/calq/payment-methods", async (c) => {
+  const creds = await loadCalqCreds();
+  if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
+  const methods = await getCalqPaymentMethods(creds);
+  return c.json({
+    configuredId: Number(creds.paymentMethodId),
+    methods: methods.map((m) => ({
+      id: m.id,
+      name: m.name,
+      category: m.category,
+      isActive: m.isActive,
+    })),
+  });
+});
+
+adminRoutes.get("/calq/rooms", async (c) => {
+  const creds = await loadCalqCreds();
+  if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
+  const rooms = await getCalqRooms(creds);
+  return c.json({ rooms: rooms.map((r) => ({ id: r.id, name: r.name, isActive: r.isActive })) });
+});
+
+adminRoutes.get("/calq/vaccines", async (c) => {
+  const creds = await loadCalqCreds();
+  if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
+  const vaccines = await getCalqVaccines(creds);
+  return c.json({
+    vaccines: vaccines.map((v) => ({
+      id: v.id,
+      name: v.name,
+      type: v.type,
+      frequency: v.frequency,
+      ageRange: v.ageRange,
+      procedureId: v.procedureId,
+    })),
   });
 });
 

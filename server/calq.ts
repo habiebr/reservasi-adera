@@ -283,6 +283,64 @@ export function procedurePrice(p: CalqProcedure): number {
   return special > 0 ? special : base;
 }
 
+// ── Master-data browse (admin "Data Calq" tab; all read-only) ──
+
+export interface CalqProduct {
+  id: number;
+  name: string;
+  type: string | null; // PRODUCT | MEDICINE | …
+  genericName: string | null;
+  manufacturer: string | null;
+  sku: string | null;
+  form: string | null;
+  dosage: string | null;
+  dosageUnit: string | null;
+  sellingPrice: string | number | null;
+  specialPrice: string | number | null;
+  deletedAt: string | null;
+}
+
+/** GET /products — the pharmacy/product catalog (obat, vaksin stok, dsb). */
+export function getCalqProducts(creds: CalqCreds): Promise<CalqProduct[]> {
+  return calqGet(creds, "/products?limit=1000") as Promise<CalqProduct[]>;
+}
+
+export interface CalqPaymentMethod {
+  id: number;
+  name: string;
+  type: string | null;
+  category: string | null;
+  isActive: boolean;
+}
+
+export function getCalqPaymentMethods(creds: CalqCreds): Promise<CalqPaymentMethod[]> {
+  return calqGet(creds, "/payment-methods") as Promise<CalqPaymentMethod[]>;
+}
+
+export interface CalqRoom {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
+export function getCalqRooms(creds: CalqCreds): Promise<CalqRoom[]> {
+  return calqGet(creds, "/rooms") as Promise<CalqRoom[]>;
+}
+
+export interface CalqVaccine {
+  id: number;
+  name: string;
+  type: string | null;
+  frequency: number | null;
+  ageRange: string | null;
+  description: string | null;
+  procedureId: number | null;
+}
+
+export function getCalqVaccines(creds: CalqCreds): Promise<CalqVaccine[]> {
+  return calqGet(creds, "/vaccine") as Promise<CalqVaccine[]>;
+}
+
 // ── Appointments & sales ──
 
 export interface CalqAppointment {
