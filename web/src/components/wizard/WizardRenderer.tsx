@@ -74,20 +74,22 @@ function carriedRows(
   return rows;
 }
 
+/** What the patient has already chosen, carried forward onto later pages. One row per choice
+ * stacked vertically: chips put label and value on one line and wrapped mid-value on a phone,
+ * which made a long doctor name unreadable. */
 function CarriedSummary({ rows }: { rows: { label: string; value: string }[] }) {
   if (rows.length === 0) return null;
   return (
-    <div className="mt-4 flex flex-wrap gap-2">
+    <dl className="mt-4 divide-y divide-border overflow-hidden rounded-xl border border-border bg-secondary/40">
       {rows.map((r) => (
-        <span
-          key={r.label}
-          className="inline-flex items-center gap-1.5 rounded-full bg-primary-muted px-3 py-1.5 text-xs text-accent-foreground"
-        >
-          <span className="opacity-70">{r.label}</span>
-          <span className="font-medium">{r.value}</span>
-        </span>
+        <div key={r.label} className="flex items-baseline gap-3 px-4 py-2.5">
+          <dt className="w-20 shrink-0 text-xs text-muted-foreground">{r.label}</dt>
+          <dd className="min-w-0 flex-1 text-sm font-medium leading-snug text-foreground">
+            {r.value}
+          </dd>
+        </div>
       ))}
-    </div>
+    </dl>
   );
 }
 
@@ -308,8 +310,14 @@ export default function WizardRenderer({
         </p>
       )}
 
+      {branding.footerNote && (
+        <p className="mt-6 text-center text-xs text-muted-foreground">{branding.footerNote}</p>
+      )}
+
       {/* Sticky so the action never scrolls out of reach on a long page. `sticky` (not `fixed`)
-          keeps it inside the admin preview's own scroll container too. */}
+          keeps it inside the admin preview's own scroll container too. Must stay the LAST
+          child: its negative bottom margin bleeds into the card's padding, so anything
+          rendered after it falls outside the card and gets clipped. */}
       <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-8 flex items-center justify-between gap-3 rounded-b-2xl border-t border-border bg-card/95 px-5 py-4 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:-mx-8 sm:-mb-8 sm:px-8">
         <Button
           variant="outline"
@@ -344,9 +352,6 @@ export default function WizardRenderer({
             </Button>
           )}
       </div>
-      {branding.footerNote && (
-        <p className="mt-6 text-center text-xs text-muted-foreground">{branding.footerNote}</p>
-      )}
     </div>
   );
 }

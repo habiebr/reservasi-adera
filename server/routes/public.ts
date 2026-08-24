@@ -7,6 +7,7 @@ import {
   getCalqProducts,
   getDoctorDaySlots,
   getDoctorSchedules,
+  getMedicalPersonnelPhotos,
   getPolyclinics,
   getProcedures,
   loadCalqCreds,
@@ -94,16 +95,21 @@ publicRoutes.get("/calq/doctors", async (c) => {
   const creds = await loadCalqCreds();
   if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
 
-  const doctors = await cached(
-    `doctors:${specializationId}`,
-    () => getDoctorSchedules(creds, specializationId),
-  );
+  // Photos come from a second endpoint; a failure there must cost the avatars, not the list.
+  const [doctors, photos] = await Promise.all([
+    cached(`doctors:${specializationId}`, () => getDoctorSchedules(creds, specializationId)),
+    cached(
+      `photos:${specializationId}`,
+      () => getMedicalPersonnelPhotos(creds, specializationId),
+    ).catch(() => ({} as Record<number, string>)),
+  ]);
   return c.json({
     doctors: doctors
       .filter((d) => d.schedules.length > 0)
       .map((d) => ({
         id: d.id,
         name: [d.title, d.firstName, d.lastName].filter(Boolean).join(" ").trim(),
+        photoUrl: photos[d.id] ?? null,
         sessionDuration: d.sessionDuration,
         bookingOrderType: d.bookingOrderType,
         practiceDays: [...new Set(d.schedules.map((s) => s.dayOfWeek))].sort(),

@@ -45,6 +45,8 @@ export interface PoliOption {
 export interface DoctorOption {
   id: number;
   name: string;
+  /** Signed, short-lived Calq URL — render it, never persist it. */
+  photoUrl?: string | null;
   sessionDuration: number;
   bookingOrderType: string;
   practiceDays: number[];

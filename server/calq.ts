@@ -203,6 +203,45 @@ export interface CalqDoctorWithSchedules {
   timeSlots: CalqTimeSlot[];
 }
 
+/**
+ * Doctor portraits keyed by medical-personnel id. They live on /medical-personnels, not on
+ * /medical-personnels/schedules, so this is its own call. Calq hands them out as short-lived
+ * signed GCS links (X-Goog-Expires=3600) — fine to pass straight to the browser behind the
+ * 60s response cache, but never worth storing.
+ */
+export async function getMedicalPersonnelPhotos(
+  creds: CalqCreds,
+  specializationId: number,
+): Promise<Record<number, string>> {
+  const data = await calqGet(
+    creds,
+    `/medical-personnels?specializationId=${specializationId}`,
+  );
+  const list = Array.isArray(data) ? data as { id: number; photo?: unknown }[] : [];
+  const out: Record<number, string> = {};
+  for (const d of list) {
+    const url = extractPhotoUrl(d.photo);
+    if (url) out[d.id] = url;
+  }
+  return out;
+}
+
+/**
+ * `photo` is null for all 31 doctors in the sandbox, so its populated shape is unverified —
+ * production is the only place it carries data. Accept a bare URL string or the usual object
+ * spellings and ignore anything else, so an unexpected shape costs an avatar, not the page.
+ */
+function extractPhotoUrl(photo: unknown): string | null {
+  if (typeof photo === "string") return photo.startsWith("http") ? photo : null;
+  if (photo && typeof photo === "object") {
+    for (const k of ["url", "signedUrl", "publicUrl", "fileUrl", "src", "path"]) {
+      const v = (photo as Record<string, unknown>)[k];
+      if (typeof v === "string" && v.startsWith("http")) return v;
+    }
+  }
+  return null;
+}
+
 export function getDoctorSchedules(
   creds: CalqCreds,
   specializationId: number,

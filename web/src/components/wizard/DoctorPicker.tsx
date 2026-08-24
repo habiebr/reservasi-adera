@@ -8,6 +8,32 @@ import type { BlockProps } from "./types";
 
 const DAY_NAMES = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 
+/** Portrait when Calq has one, the generic icon otherwise. The URL is a signed link that can
+ * expire mid-session, so a load failure falls back to the icon instead of a broken image. */
+function DoctorAvatar({ url, selected }: { url?: string | null; selected: boolean }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <span
+      className={cn(
+        "flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full",
+        selected ? "bg-primary text-primary-foreground" : "bg-secondary text-primary",
+      )}
+    >
+      {url && !broken
+        ? (
+          <img
+            src={url}
+            alt=""
+            loading="lazy"
+            onError={() => setBroken(true)}
+            className="h-full w-full object-cover"
+          />
+        )
+        : <UserRound className="h-6 w-6" />}
+    </span>
+  );
+}
+
 export default function DoctorPicker({ slug, data, update }: BlockProps) {
   const [doctors, setDoctors] = useState<DoctorOption[] | null>(null);
   const [error, setError] = useState("");
@@ -94,14 +120,7 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
                 : "border-border bg-card hover:border-primary/60",
             )}
           >
-            <span
-              className={cn(
-                "flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
-                selected ? "bg-primary text-primary-foreground" : "bg-secondary text-primary",
-              )}
-            >
-              <UserRound className="h-6 w-6" />
-            </span>
+            <DoctorAvatar url={doc.photoUrl} selected={selected} />
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-foreground">{doc.name}</span>
               <span className="mt-2 flex flex-wrap gap-1">
