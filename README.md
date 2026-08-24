@@ -44,12 +44,25 @@ Tes: `deno task test` (shared) · `cd web && npm run build` (typecheck + build).
 ## Produksi
 
 ```bash
-docker compose up -d --build    # db + app (migrasi jalan otomatis saat boot)
+docker compose up -d --build    # db + app + cloudflared (migrasi jalan otomatis saat boot)
 ```
 
-Tambahkan hostname di Cloudflare Tunnel (config vaksinadera):
-`reservasi.klinikadera.co.id → http://localhost:8300`, lalu set `APP_URL` di `.env`.
-Webhook DOKU dikirim per-order (`notification_url`) — tidak perlu mengubah dashboard DOKU.
+**Cloudflare Tunnel** ikut di compose (service `cloudflared`), meng-expose
+`https://reservasi-adera.habiebraharjo.xyz → http://app:8300`. Ingress ada di
+`cloudflared/config.yml` (tanpa rahasia, boleh di-commit); identitas + kredensial tunnel
+datang dari `TUNNEL_TOKEN` di `.env`. Menyiapkan ulang di mesin baru:
+
+```bash
+cloudflared tunnel login                 # pilih zone habiebraharjo.xyz
+cloudflared tunnel create reservasi-adera
+cloudflared tunnel route dns reservasi-adera reservasi-adera.habiebraharjo.xyz
+cloudflared tunnel token reservasi-adera # salin hasilnya ke TUNNEL_TOKEN di .env
+```
+
+Deploy yang sudah punya token cukup mengisi `TUNNEL_TOKEN` — tak perlu `login`/`create` lagi.
+
+`APP_URL` di `.env` harus sama dengan hostname tunnel — dipakai untuk link invoice dan
+`notification_url` DOKU. Webhook DOKU dikirim per-order — tidak perlu mengubah dashboard DOKU.
 
 ## Halaman
 

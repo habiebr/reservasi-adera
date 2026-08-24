@@ -1,0 +1,6 @@
+# Ingress only — no secrets in this file, so it is safe to commit.
+# Tunnel identity + credentials come from TUNNEL_TOKEN (see .env).
+ingress:
+  - hostname: reservasi-adera.habiebraharjo.xyz
+    service: http://app:8300
+  - service: http_status:404

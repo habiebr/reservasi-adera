@@ -29,16 +29,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - default
-      - tunnel   # vaksinadera's cloudflared network → serves reservasi-staging.habiebraharjo.xyz
+
+  # Cloudflare Tunnel → https://reservasi-adera.habiebraharjo.xyz
+  # Ingress is defined in cloudflared/config.yml (service: http://app:8300);
+  # tunnel identity + credentials come from TUNNEL_TOKEN in .env.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: reservasi-cloudflared
+    restart: unless-stopped
+    # Only the tunnel token is injected — not the whole .env, which holds Calq/DOKU/SMTP
+    # secrets that cloudflared has no business seeing. Defaulted rather than `:?` because
+    # compose interpolates the whole file: a required var would also break `up -d db`.
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
+    depends_on:
+      - app
 
 volumes:
   reservasi-db-data:
-
-networks:
-  # The Cloudflare Tunnel container (vaksinadera-cloudflared) lives on this network and
-  # reaches the app by container name (http://reservasi-app:8300).
-  tunnel:
-    name: vaksinadera_internal
-    external: true
