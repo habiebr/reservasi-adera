@@ -190,11 +190,43 @@ export default function WizardRenderer({
   const hint = page ? nextHint(page, data) : "Halaman belum siap";
   const canNext = hint === null;
 
+  // A new patient is created on the way out of the data page rather than by a "Simpan"
+  // button of its own: one action per page, and Lanjut is that action. Preview never posts.
+  const needsRegister = !preview && !data.found && !data.calqPatientId &&
+    (page?.blocks.some((b) => b.kind === "patient_data") ?? false);
+
+  const registerPatient = async (): Promise<string> => {
+    const r = await apiPost<{ calq_patient_id: string; mrn: string | null }>(
+      "/api/booking/patient",
+      { slug, patient: { ...data.patient, nomor_hp: data.patient.nomor_hp.replace(/\D/g, "") } },
+    );
+    update({ calqPatientId: r.calq_patient_id, patient: { ...data.patient, mrn: r.mrn ?? "" } });
+    return r.calq_patient_id;
+  };
+
+  const goNext = async () => {
+    setSubmitError("");
+    if (needsRegister) {
+      setSubmitting(true);
+      try {
+        await registerPatient();
+      } catch (e) {
+        setSubmitError(e instanceof Error ? e.message : "Gagal menyimpan data pasien.");
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
+    setStep((s) => s + 1);
+  };
+
   const submit = async () => {
     if (preview) return;
     setSubmitting(true);
     setSubmitError("");
     try {
+      // `data` is stale right after registerPatient's setState — use the id it returns.
+      const patientId = needsRegister ? await registerPatient() : data.calqPatientId;
       const r = await apiPost<{ payment_url: string; invoice_number: string }>(
         "/api/booking/create",
         {
@@ -208,7 +240,7 @@ export default function WizardRenderer({
           calq_schedule_id: data.scheduleId,
           visit_date: data.visitDate,
           slot_time: data.slotTime ?? null,
-          calq_patient_id: data.calqPatientId,
+          calq_patient_id: patientId,
           is_new_patient: !data.found,
           patient: data.patient,
           answers: data.answers,
@@ -301,12 +333,14 @@ export default function WizardRenderer({
           )
           : (
             <Button
-              onClick={() => setStep((s) => s + 1)}
+              onClick={goNext}
               disabled={!canNext || submitting}
               className="h-11 min-w-0 flex-1 gap-1 px-6 sm:flex-none"
             >
-              {hint ?? "Lanjut"}
-              {canNext && <ArrowRight className="h-4 w-4" />}
+              {submitting
+                ? "Mendaftarkan…"
+                : (hint ?? (needsRegister ? "Daftar & Lanjut" : "Lanjut"))}
+              {canNext && !submitting && <ArrowRight className="h-4 w-4" />}
             </Button>
           )}
       </div>

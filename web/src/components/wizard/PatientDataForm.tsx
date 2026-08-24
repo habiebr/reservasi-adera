@@ -1,9 +1,6 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { apiPost } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import DateSegments from "./DateSegments";
 import type { BlockProps } from "./types";
@@ -16,37 +13,17 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function PatientDataForm({ slug, block, data, update }: BlockProps) {
+export default function PatientDataForm({ block, data, update }: BlockProps) {
   const askAddress = block.config.askAddress ?? true;
   const customFields = block.config.customFields ?? [];
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const p = data.patient;
 
   if (data.found) return null; // existing patient — nothing to fill
 
   const setP = (patch: Partial<typeof p>) => update({ patient: { ...p, ...patch } });
 
-  const canSubmit = /^\d{16}$/.test(p.nik) && p.nama_lengkap.trim().length >= 2 &&
-    /^\d{4}-\d{2}-\d{2}$/.test(p.tanggal_lahir) && p.jenis_kelamin &&
-    p.nomor_hp.replace(/\D/g, "").length >= 9;
-
-  const submit = async () => {
-    setSaving(true);
-    setError("");
-    try {
-      const r = await apiPost<{ calq_patient_id: string; mrn: string | null }>(
-        "/api/booking/patient",
-        { slug, patient: { ...p, nomor_hp: p.nomor_hp.replace(/\D/g, "") } },
-      );
-      update({ calqPatientId: r.calq_patient_id, patient: { ...p, mrn: r.mrn ?? "" } });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal menyimpan data pasien.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  // Registration happens when Lanjut is pressed (see WizardRenderer); once it has, the
+  // fields lock — the Calq record exists and the wizard no longer sends this payload.
   const registered = Boolean(data.calqPatientId);
 
   return (
@@ -195,15 +172,9 @@ export default function PatientDataForm({ slug, block, data, update }: BlockProp
         </div>
       )}
 
-      {error && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-
-      {!registered ? (
-        <Button onClick={submit} disabled={!canSubmit || saving} className="h-11 w-full sm:w-auto sm:px-8">
-          {saving ? "Menyimpan…" : "Simpan & Daftarkan Pasien"}
-        </Button>
-      ) : (
+      {registered && (
         <p className="rounded-lg bg-success/10 p-3 text-sm font-medium text-success">
-          ✓ Pasien terdaftar{p.mrn ? ` — No. RM ${p.mrn}` : ""}. Silakan lanjut.
+          ✓ Pasien terdaftar{p.mrn ? ` — No. RM ${p.mrn}` : ""}.
         </p>
       )}
     </div>

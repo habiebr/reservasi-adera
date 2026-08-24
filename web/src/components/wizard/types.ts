@@ -83,6 +83,13 @@ export function visiblePages(def: FormDefinition, data: WizardData): FormPage[] 
     });
 }
 
+/** Everything /api/booking/patient rejects, checked before the request is made. */
+export function patientDataComplete(p: WizardPatient): boolean {
+  return /^\d{16}$/.test(p.nik) && p.nama_lengkap.trim().length >= 2 &&
+    /^\d{4}-\d{2}-\d{2}$/.test(p.tanggal_lahir) && Boolean(p.jenis_kelamin) &&
+    p.nomor_hp.replace(/\D/g, "").length >= 9;
+}
+
 /** Why this page can't be left yet — null when it is satisfied. The string doubles as the
  * Lanjut button's label, so a disabled button always says what it is waiting for. */
 export function nextHint(page: FormPage, data: WizardData): string | null {
@@ -118,12 +125,10 @@ export function nextHint(page: FormPage, data: WizardData): string | null {
         if (data.found && !data.identityConfirmed) return "Konfirmasi data Anda dulu";
         break;
       case "patient_data": {
+        // No separate "Simpan" step: the block has no button of its own, and Lanjut registers
+        // the patient on the way out — so this gate must cover everything the POST needs.
         if (data.found) break; // existing patient — form hidden
-        const p = data.patient;
-        if (!data.calqPatientId) return "Simpan data diri dulu";
-        if (!p.nama_lengkap || !p.tanggal_lahir || !p.jenis_kelamin || !p.nomor_hp) {
-          return "Lengkapi data diri dulu";
-        }
+        if (!patientDataComplete(data.patient)) return "Lengkapi data diri dulu";
         for (const f of block.config.customFields ?? []) {
           if (f.required && !(data.answers[f.id] ?? "").trim()) return "Lengkapi data diri dulu";
         }
