@@ -7,7 +7,6 @@ import {
   createCalqPatient,
   findCalqPatientByMrn,
   findCalqPatientByNik,
-  findCalqPatientByPhone,
   getDoctorDaySlots,
   getProcedures,
   loadCalqCreds,
@@ -39,7 +38,7 @@ type BookingItem = PricedItem & {
 
 export const bookingRoutes = new Hono();
 
-// Soft per-IP throttle on the lookup (unauthenticated NIK/RM/HP surface).
+// Soft per-IP throttle on the lookup (unauthenticated NIK surface).
 const lookupHits = new Map<string, { count: number; at: number }>();
 function throttled(ip: string): boolean {
   const now = Date.now();
@@ -64,7 +63,6 @@ bookingRoutes.post("/lookup", async (c) => {
 
   const nik = String(body.nik ?? "").replace(/\D/g, "");
   const mrn = String(body.mrn ?? "").trim();
-  const hp = String(body.nomor_hp ?? "").trim();
   const dob = String(body.tanggal_lahir ?? "").trim();
   if (!isValidTanggalLahir(dob)) return c.json({ error: "Tanggal lahir wajib diisi." }, 400);
 
@@ -76,17 +74,12 @@ bookingRoutes.post("/lookup", async (c) => {
     const cfg = await bookingConfigForForm(form.id as string);
     if (!cfg.allowMrn) return c.json({ error: "Pencarian No. RM tidak tersedia." }, 400);
     patient = await findCalqPatientByMrn(creds, mrn);
-  } else if (hp) {
-    const cfg = await bookingConfigForForm(form.id as string);
-    if (!cfg.allowPhone) return c.json({ error: "Pencarian No. HP tidak tersedia." }, 400);
-    if (!canonPhone(hp)) return c.json({ error: "No. HP tidak valid." }, 400);
-    patient = await findCalqPatientByPhone(creds, hp);
   } else {
-    return c.json({ error: "Isi NIK, No. RM, atau No. HP." }, 400);
+    return c.json({ error: "Isi NIK atau No. RM." }, 400);
   }
 
   // Tanggal lahir is the second identity factor: an EMR hit whose birth date differs from
-  // the one entered is reported as "not found", so a NIK/RM/HP alone reveals nothing.
+  // the one entered is reported as "not found", so a NIK/RM alone reveals nothing.
   const emrDob = String(patient?.dateOfBirth ?? "").slice(0, 10);
   if (patient && emrDob && emrDob !== dob) patient = null;
 

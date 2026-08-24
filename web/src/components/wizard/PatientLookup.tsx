@@ -10,16 +10,13 @@ import { emptyPatient } from "./types";
 import type { BlockProps } from "./types";
 import { cn } from "@/lib/utils";
 
-type Mode = "nik" | "mrn" | "hp";
+type Mode = "nik" | "mrn";
 
-const LABEL: Record<Mode, string> = { nik: "NIK", mrn: "No. RM", hp: "No. HP" };
+const LABEL: Record<Mode, string> = { nik: "NIK", mrn: "No. RM" };
 const PLACEHOLDER: Record<Mode, string> = {
   nik: "Contoh: 3374xxxxxxxxxxxx",
   mrn: "Contoh: SBA001234",
-  hp: "Contoh: 081234567890",
 };
-/** The server keys each search by its own field name. */
-const FIELD: Record<Mode, string> = { nik: "nik", mrn: "mrn", hp: "nomor_hp" };
 
 /** "1990-05-12" → "12-05-1990"; shown in full because the patient just typed it. */
 function displayDob(dob: string): string {
@@ -29,10 +26,7 @@ function displayDob(dob: string): string {
 
 export default function PatientLookup({ slug, block, data, update }: BlockProps) {
   const allowMrn = block.config.allowMrn ?? true;
-  const allowPhone = block.config.allowPhone ?? true;
-  const modes: Mode[] = ["nik"];
-  if (allowMrn) modes.push("mrn");
-  if (allowPhone) modes.push("hp");
+  const modes: Mode[] = allowMrn ? ["nik", "mrn"] : ["nik"];
   const [mode, setMode] = useState<Mode>("nik");
   const [value, setValue] = useState("");
   const [dob, setDob] = useState("");
@@ -49,10 +43,6 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
       setError("No. RM terlalu pendek.");
       return;
     }
-    if (mode === "hp" && v.replace(/\D/g, "").length < 9) {
-      setError("No. HP tidak valid.");
-      return;
-    }
     if (!isValidTanggalLahir(dob)) {
       setError("Isi tanggal lahir dengan lengkap.");
       return;
@@ -62,7 +52,7 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
     try {
       const r = await apiPost<LookupResponse>("/api/booking/lookup", {
         slug,
-        [FIELD[mode]]: v,
+        [mode]: v,
         tanggal_lahir: dob,
       });
       if (r.found) {
@@ -77,7 +67,6 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
             ...data.patient,
             nik: mode === "nik" ? v : data.patient.nik,
             mrn: r.mrn ?? "",
-            nomor_hp: mode === "hp" ? v : data.patient.nomor_hp,
             tanggal_lahir: dob,
           },
         });
@@ -89,12 +78,7 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
           calqPatientId: undefined,
           maskedName: undefined,
           maskedPhone: undefined,
-          patient: {
-            ...emptyPatient,
-            nik: mode === "nik" ? v : "",
-            nomor_hp: mode === "hp" ? v : "",
-            tanggal_lahir: dob,
-          },
+          patient: { ...emptyPatient, nik: mode === "nik" ? v : "", tanggal_lahir: dob },
         });
       }
     } catch (e) {
@@ -143,12 +127,12 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            inputMode={mode === "mrn" ? "text" : "numeric"}
-            maxLength={mode === "nik" ? 16 : mode === "hp" ? 15 : 20}
+            inputMode={mode === "nik" ? "numeric" : "text"}
+            maxLength={mode === "nik" ? 16 : 20}
             placeholder={PLACEHOLDER[mode]}
             value={value}
             onChange={(e) =>
-              setValue(mode === "mrn" ? e.target.value : e.target.value.replace(/\D/g, ""))}
+              setValue(mode === "nik" ? e.target.value.replace(/\D/g, "") : e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") run();
             }}

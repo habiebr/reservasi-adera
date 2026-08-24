@@ -55,7 +55,6 @@ export async function assembleDefinition(formId: string): Promise<FormDefinition
         if (b.max_days_ahead != null) config.maxDaysAhead = Number(b.max_days_ahead);
         if (b.time_display != null) config.timeDisplay = b.time_display as "segmented" | "dropdown";
         if (b.allow_mrn != null) config.allowMrn = Boolean(b.allow_mrn);
-        if (b.allow_phone != null) config.allowPhone = Boolean(b.allow_phone);
         if (b.ask_address != null) config.askAddress = Boolean(b.ask_address);
         if (b.pricing_mode != null) config.pricingMode = b.pricing_mode as "procedure" | "package";
         if (b.dp_enabled != null) config.dpEnabled = Boolean(b.dp_enabled);
@@ -151,7 +150,6 @@ export async function saveDefinition(formId: string, def: FormDefinition): Promi
           max_days_ahead: c.maxDaysAhead ?? null,
           time_display: c.timeDisplay ?? null,
           allow_mrn: c.allowMrn ?? null,
-          allow_phone: c.allowPhone ?? null,
           ask_address: c.askAddress ?? null,
           pricing_mode: c.pricingMode ?? null,
           dp_enabled: c.dpEnabled ?? null,
@@ -260,7 +258,6 @@ export interface BookingConfig {
   dpValue?: number;
   maxDaysAhead: number;
   allowMrn: boolean;
-  allowPhone: boolean;
   customFields: { id: string; label: string; required: boolean }[];
   screeningRules: { id: string; label: string; blockAnswer: string; blockMessage?: string }[];
 }
@@ -285,7 +282,6 @@ export async function bookingConfigForForm(formId: string): Promise<BookingConfi
     dpValue: pricing?.config.dpValue,
     maxDaysAhead: schedule?.config.maxDaysAhead ?? 30,
     allowMrn: lookup?.config.allowMrn ?? true,
-    allowPhone: lookup?.config.allowPhone ?? true,
     customFields: [
       ...(data?.config.customFields ?? []).map((f) => ({
         id: f.id,
