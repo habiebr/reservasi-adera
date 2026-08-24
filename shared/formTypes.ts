@@ -69,6 +69,7 @@ export interface BlockConfig {
   timeDisplay?: "segmented" | "dropdown";
   // patient_lookup
   allowMrn?: boolean;
+  allowPhone?: boolean;
   // patient_data
   askAddress?: boolean;
   customFields?: CustomField[];
@@ -205,7 +206,10 @@ export function newBlock(kind: BlockKind, id: string): FormBlock {
     config.maxDaysAhead = 30;
     config.timeDisplay = "segmented";
   }
-  if (kind === "patient_lookup") config.allowMrn = true;
+  if (kind === "patient_lookup") {
+    config.allowMrn = true;
+    config.allowPhone = true;
+  }
   if (kind === "patient_data") {
     config.askAddress = true;
     config.customFields = [];

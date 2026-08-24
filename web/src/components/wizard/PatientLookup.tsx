@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Search, UserPlus } from "lucide-react";
+import { CheckCircle2, Search, UserCheck, UserPlus } from "lucide-react";
 import { isValidTanggalLahir } from "@shared/identity";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +10,30 @@ import { emptyPatient } from "./types";
 import type { BlockProps } from "./types";
 import { cn } from "@/lib/utils";
 
+type Mode = "nik" | "mrn" | "hp";
+
+const LABEL: Record<Mode, string> = { nik: "NIK", mrn: "No. RM", hp: "No. HP" };
+const PLACEHOLDER: Record<Mode, string> = {
+  nik: "Contoh: 3374xxxxxxxxxxxx",
+  mrn: "Contoh: SBA001234",
+  hp: "Contoh: 081234567890",
+};
+/** The server keys each search by its own field name. */
+const FIELD: Record<Mode, string> = { nik: "nik", mrn: "mrn", hp: "nomor_hp" };
+
+/** "1990-05-12" → "12-05-1990"; shown in full because the patient just typed it. */
+function displayDob(dob: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : dob;
+}
+
 export default function PatientLookup({ slug, block, data, update }: BlockProps) {
   const allowMrn = block.config.allowMrn ?? true;
-  const [mode, setMode] = useState<"nik" | "mrn">("nik");
+  const allowPhone = block.config.allowPhone ?? true;
+  const modes: Mode[] = ["nik"];
+  if (allowMrn) modes.push("mrn");
+  if (allowPhone) modes.push("hp");
+  const [mode, setMode] = useState<Mode>("nik");
   const [value, setValue] = useState("");
   const [dob, setDob] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,6 +49,10 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
       setError("No. RM terlalu pendek.");
       return;
     }
+    if (mode === "hp" && v.replace(/\D/g, "").length < 9) {
+      setError("No. HP tidak valid.");
+      return;
+    }
     if (!isValidTanggalLahir(dob)) {
       setError("Isi tanggal lahir dengan lengkap.");
       return;
@@ -37,19 +62,22 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
     try {
       const r = await apiPost<LookupResponse>("/api/booking/lookup", {
         slug,
-        [mode]: v,
+        [FIELD[mode]]: v,
         tanggal_lahir: dob,
       });
       if (r.found) {
         update({
           lookupDone: true,
           found: true,
+          identityConfirmed: false,
           calqPatientId: r.calq_patient_id,
           maskedName: r.masked_name,
+          maskedPhone: r.masked_phone ?? undefined,
           patient: {
             ...data.patient,
             nik: mode === "nik" ? v : data.patient.nik,
             mrn: r.mrn ?? "",
+            nomor_hp: mode === "hp" ? v : data.patient.nomor_hp,
             tanggal_lahir: dob,
           },
         });
@@ -57,9 +85,16 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
         update({
           lookupDone: true,
           found: false,
+          identityConfirmed: false,
           calqPatientId: undefined,
           maskedName: undefined,
-          patient: { ...emptyPatient, nik: mode === "nik" ? v : "", tanggal_lahir: dob },
+          maskedPhone: undefined,
+          patient: {
+            ...emptyPatient,
+            nik: mode === "nik" ? v : "",
+            nomor_hp: mode === "hp" ? v : "",
+            tanggal_lahir: dob,
+          },
         });
       }
     } catch (e) {
@@ -69,40 +104,51 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
     }
   };
 
+  const searchAgain = () =>
+    update({
+      lookupDone: false,
+      found: false,
+      identityConfirmed: false,
+      calqPatientId: undefined,
+      maskedName: undefined,
+      maskedPhone: undefined,
+    });
+
   return (
     <div className="space-y-4">
       {block.description && <p className="text-sm text-muted-foreground">{block.description}</p>}
-      {allowMrn && (
+      {modes.length > 1 && (
         <div className="inline-flex rounded-lg border border-border bg-secondary p-1">
-          {(["nik", "mrn"] as const).map((m) => (
+          {modes.map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => {
                 setMode(m);
                 setValue("");
+                setError("");
               }}
               className={cn(
                 "rounded-md px-4 py-1.5 text-sm font-medium transition-all",
                 mode === m ? "bg-card text-primary shadow-sm" : "text-muted-foreground",
               )}
             >
-              {m === "nik" ? "NIK" : "No. RM"}
+              {LABEL[m]}
             </button>
           ))}
         </div>
       )}
       <div className="space-y-1.5">
-        <Label>{mode === "nik" ? "NIK" : "No. RM"}</Label>
+        <Label>{LABEL[mode]}</Label>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            inputMode={mode === "nik" ? "numeric" : "text"}
-            maxLength={mode === "nik" ? 16 : 20}
-            placeholder={mode === "nik" ? "Contoh: 3374xxxxxxxxxxxx" : "Contoh: SBA001234"}
+            inputMode={mode === "mrn" ? "text" : "numeric"}
+            maxLength={mode === "nik" ? 16 : mode === "hp" ? 15 : 20}
+            placeholder={PLACEHOLDER[mode]}
             value={value}
             onChange={(e) =>
-              setValue(mode === "nik" ? e.target.value.replace(/\D/g, "") : e.target.value)}
+              setValue(mode === "mrn" ? e.target.value : e.target.value.replace(/\D/g, ""))}
             onKeyDown={(e) => {
               if (e.key === "Enter") run();
             }}
@@ -121,12 +167,63 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {data.lookupDone && data.found && (
+      {/* A hit is shown masked and must be acknowledged: only the person who already knows
+          the data recognises it, and nothing new is revealed to whoever passed the check. */}
+      {data.lookupDone && data.found && !data.identityConfirmed && (
+        <div className="rounded-xl border-2 border-info/40 bg-info/5 p-4">
+          <div className="flex items-start gap-3">
+            <UserCheck className="mt-0.5 h-5 w-5 shrink-0 text-info" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">Data Anda ditemukan</p>
+              <p className="text-xs text-muted-foreground">
+                Pastikan data di bawah ini benar milik Anda sebelum melanjutkan.
+              </p>
+              <dl className="mt-3 space-y-1.5 text-sm">
+                <div className="flex gap-3">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Nama</dt>
+                  <dd className="font-medium text-foreground">{data.maskedName}</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-28 shrink-0 text-muted-foreground">Tanggal lahir</dt>
+                  <dd className="font-medium text-foreground">
+                    {displayDob(data.patient.tanggal_lahir)}
+                  </dd>
+                </div>
+                {data.maskedPhone && (
+                  <div className="flex gap-3">
+                    <dt className="w-28 shrink-0 text-muted-foreground">No. HP</dt>
+                    <dd className="font-medium text-foreground">{data.maskedPhone}</dd>
+                  </div>
+                )}
+                {data.patient.mrn && (
+                  <div className="flex gap-3">
+                    <dt className="w-28 shrink-0 text-muted-foreground">No. RM</dt>
+                    <dd className="font-medium text-foreground">{data.patient.mrn}</dd>
+                  </div>
+                )}
+              </dl>
+              <div className="mt-4 flex flex-wrap items-center gap-4">
+                <Button onClick={() => update({ identityConfirmed: true })} className="h-10 px-5">
+                  Ya, ini saya
+                </Button>
+                <button
+                  type="button"
+                  onClick={searchAgain}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Bukan saya? Cari ulang
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {data.lookupDone && data.found && data.identityConfirmed && (
         <div className="flex items-start gap-3 rounded-xl border-2 border-success/40 bg-success/5 p-4">
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
           <div>
             <p className="text-sm font-semibold text-foreground">
-              Data ditemukan: {data.maskedName}
+              Terverifikasi: {data.maskedName}
             </p>
             <p className="text-xs text-muted-foreground">
               {data.patient.mrn ? `No. RM ${data.patient.mrn}. ` : ""}
@@ -134,7 +231,7 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
             </p>
             <button
               type="button"
-              onClick={() => update({ lookupDone: false, found: false, calqPatientId: undefined })}
+              onClick={searchAgain}
               className="mt-1 text-xs font-medium text-primary hover:underline"
             >
               Bukan Anda? Cari ulang
@@ -148,8 +245,8 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
           <div>
             <p className="text-sm font-semibold text-foreground">Data tidak ditemukan</p>
             <p className="text-xs text-muted-foreground">
-              Pastikan {mode === "nik" ? "NIK" : "No. RM"} dan tanggal lahir sudah benar, atau
-              lengkapi data diri di bawah untuk mendaftar sebagai pasien baru.
+              Pastikan {LABEL[mode]} dan tanggal lahir sudah benar, atau lengkapi data diri di bawah
+              untuk mendaftar sebagai pasien baru.
             </p>
           </div>
         </div>

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { UserRound } from "lucide-react";
+import { Search, UserRound } from "lucide-react";
 import { apiGet, type DoctorOption } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { BlockProps } from "./types";
 
@@ -10,6 +11,7 @@ const DAY_NAMES = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 export default function DoctorPicker({ slug, data, update }: BlockProps) {
   const [doctors, setDoctors] = useState<DoctorOption[] | null>(null);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!data.specializationId) return;
@@ -42,9 +44,32 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
     );
   }
 
+  // A search box over two names is clutter; past a handful it is the fastest way in.
+  const searchable = doctors.length > 3;
+  const q = query.trim().toLowerCase();
+  const shown = q ? doctors.filter((d) => d.name.toLowerCase().includes(q)) : doctors;
+
   return (
-    <div role="radiogroup" aria-label="Pilihan dokter" className="space-y-3">
-      {doctors.map((doc) => {
+    <div className="space-y-3">
+      {searchable && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari nama dokter"
+            aria-label="Cari nama dokter"
+            className="h-11 pl-9"
+          />
+        </div>
+      )}
+      {shown.length === 0 && (
+        <p className="rounded-lg bg-warning-muted p-4 text-sm text-warning-foreground">
+          Tidak ada dokter yang cocok dengan pencarian Anda.
+        </p>
+      )}
+      <div role="radiogroup" aria-label="Pilihan dokter" className="space-y-3">
+      {shown.map((doc) => {
         const selected = data.doctorId === doc.id;
         return (
           <button
@@ -93,6 +118,7 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
           </button>
         );
       })}
+      </div>
     </div>
   );
 }

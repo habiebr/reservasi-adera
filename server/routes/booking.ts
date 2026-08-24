@@ -7,6 +7,7 @@ import {
   createCalqPatient,
   findCalqPatientByMrn,
   findCalqPatientByNik,
+  findCalqPatientByPhone,
   getDoctorDaySlots,
   getProcedures,
   loadCalqCreds,
@@ -21,6 +22,7 @@ import {
   isValidTanggalLahir,
   maskDob,
   maskName,
+  maskPhone,
 } from "@shared/identity.ts";
 import { amountDue, dpAmount, totalAmount, type PricedItem } from "@shared/pricing.ts";
 import { groupBookingItemRows, listBundles, priceBundles } from "../bundles.ts";
@@ -37,7 +39,7 @@ type BookingItem = PricedItem & {
 
 export const bookingRoutes = new Hono();
 
-// Soft per-IP throttle on the lookup (unauthenticated NIK surface).
+// Soft per-IP throttle on the lookup (unauthenticated NIK/RM/HP surface).
 const lookupHits = new Map<string, { count: number; at: number }>();
 function throttled(ip: string): boolean {
   const now = Date.now();
@@ -62,6 +64,7 @@ bookingRoutes.post("/lookup", async (c) => {
 
   const nik = String(body.nik ?? "").replace(/\D/g, "");
   const mrn = String(body.mrn ?? "").trim();
+  const hp = String(body.nomor_hp ?? "").trim();
   const dob = String(body.tanggal_lahir ?? "").trim();
   if (!isValidTanggalLahir(dob)) return c.json({ error: "Tanggal lahir wajib diisi." }, 400);
 
@@ -73,12 +76,17 @@ bookingRoutes.post("/lookup", async (c) => {
     const cfg = await bookingConfigForForm(form.id as string);
     if (!cfg.allowMrn) return c.json({ error: "Pencarian No. RM tidak tersedia." }, 400);
     patient = await findCalqPatientByMrn(creds, mrn);
+  } else if (hp) {
+    const cfg = await bookingConfigForForm(form.id as string);
+    if (!cfg.allowPhone) return c.json({ error: "Pencarian No. HP tidak tersedia." }, 400);
+    if (!canonPhone(hp)) return c.json({ error: "No. HP tidak valid." }, 400);
+    patient = await findCalqPatientByPhone(creds, hp);
   } else {
-    return c.json({ error: "Isi NIK atau No. RM." }, 400);
+    return c.json({ error: "Isi NIK, No. RM, atau No. HP." }, 400);
   }
 
   // Tanggal lahir is the second identity factor: an EMR hit whose birth date differs from
-  // the one entered is reported as "not found" so NIK/MRN alone reveals nothing.
+  // the one entered is reported as "not found", so a NIK/RM/HP alone reveals nothing.
   const emrDob = String(patient?.dateOfBirth ?? "").slice(0, 10);
   if (patient && emrDob && emrDob !== dob) patient = null;
 
@@ -90,6 +98,7 @@ bookingRoutes.post("/lookup", async (c) => {
     mrn: patient.medicalRecordNumber,
     masked_name: maskName([patient.firstName, patient.lastName].filter(Boolean).join(" ")),
     masked_dob: maskDob(patient.dateOfBirth),
+    masked_phone: maskPhone(patient.mobilePhone ?? patient.whatsappNumber),
     has_email: Boolean(patient.email),
   });
 });

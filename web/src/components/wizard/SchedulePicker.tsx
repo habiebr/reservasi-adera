@@ -54,6 +54,10 @@ export default function SchedulePicker({ slug, block, data, update }: BlockProps
 
   const selectedDate = data.visitDate ? new Date(`${data.visitDate}T12:00:00`) : undefined;
 
+  // One predicate drives both the disabled state and the legend, so the two can never disagree.
+  const unavailable = (d: Date) =>
+    d < today || d > maxDate || (practiceDays.size > 0 && !practiceDays.has(d.getDay()));
+
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-border bg-card p-2 sm:p-4">
@@ -68,10 +72,24 @@ export default function SchedulePicker({ slug, block, data, update }: BlockProps
             if (!d) return;
             update({ visitDate: fmtDate(d), scheduleId: undefined, slotTime: undefined });
           }}
-          disabled={(d) =>
-            d < today || d > maxDate || (practiceDays.size > 0 && !practiceDays.has(d.getDay()))}
+          disabled={unavailable}
+          modifiers={{ available: (d) => !unavailable(d) }}
+          modifiersClassNames={{
+            // aria-selected wins on specificity, so a picked day keeps the primary fill.
+            available: "text-success font-semibold aria-selected:text-primary-foreground",
+          }}
           className="mx-auto w-fit"
         />
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-2 pb-2">
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-success" aria-hidden />
+            Dokter praktik
+          </span>
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-muted-foreground/40" aria-hidden />
+            Tidak ada jadwal
+          </span>
+        </div>
       </div>
 
       {data.visitDate && (

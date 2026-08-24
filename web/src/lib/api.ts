@@ -93,6 +93,7 @@ export interface LookupResponse {
   mrn?: string | null;
   masked_name?: string;
   masked_dob?: string | null;
+  masked_phone?: string | null;
   has_email?: boolean;
 }
 

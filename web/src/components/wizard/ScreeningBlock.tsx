@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import type { BlockProps } from "./types";
 
 /** Ya/Tidak screening questions. A question's blockAnswer stops the flow with a warning —
- * the Lanjut button stays disabled via pageComplete. */
+ * the Lanjut button stays disabled via nextHint. */
 export default function ScreeningBlock({ block, data, update }: BlockProps) {
   const questions = block.config.screeningQuestions ?? [];
   if (questions.length === 0) return null;

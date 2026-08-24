@@ -22,6 +22,14 @@ export function maskName(name: string): string {
     .join(" ");
 }
 
+/** "081234565678" → "08••••5678" — recognisable to the owner, useless to a guesser. */
+export function maskPhone(phone: string | null | undefined): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  const local = digits.startsWith("62") ? "0" + digits.slice(2) : digits;
+  return local.slice(0, 2) + "•".repeat(Math.max(2, local.length - 6)) + local.slice(-4);
+}
+
 /** "1995-05-05" → "**-**-1995" (year only). */
 export function maskDob(dob: string | null | undefined): string | null {
   const m = /^(\d{4})-\d{2}-\d{2}/.exec(dob ?? "");

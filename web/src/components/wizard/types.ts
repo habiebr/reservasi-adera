@@ -30,8 +30,11 @@ export interface WizardData {
   // patient
   lookupDone?: boolean;
   found?: boolean;
+  /** Identified patient ticked "Ya, ini saya" on the confirm card. */
+  identityConfirmed?: boolean;
   calqPatientId?: string;
   maskedName?: string;
+  maskedPhone?: string;
   patient: WizardPatient;
   answers: Record<string, string>;
   /** info_page requireAck: blockId → "sudah membaca" ticked */
@@ -80,54 +83,60 @@ export function visiblePages(def: FormDefinition, data: WizardData): FormPage[] 
     });
 }
 
-/** Whether every block on this page is satisfied (gates the Lanjut button). */
-export function pageComplete(page: FormPage, data: WizardData): boolean {
+/** Why this page can't be left yet — null when it is satisfied. The string doubles as the
+ * Lanjut button's label, so a disabled button always says what it is waiting for. */
+export function nextHint(page: FormPage, data: WizardData): string | null {
   for (const block of page.blocks) {
     switch (block.kind) {
       case "info_page":
-        if (block.config.requireAck && !data.acks[block.id]) return false;
+        if (block.config.requireAck && !data.acks[block.id]) return "Baca dulu informasinya";
         break;
       case "screening":
         for (const q of block.config.screeningQuestions ?? []) {
           const answer = (data.answers[q.id] ?? "").trim();
-          if (!answer) return false;
-          if (q.blockAnswer && answer === q.blockAnswer) return false;
+          if (!answer) return "Jawab skrining dulu";
+          if (q.blockAnswer && answer === q.blockAnswer) return "Belum bisa dilanjutkan";
         }
         break;
       case "poli_picker":
-        if (!data.specializationId) return false;
+        if (!data.specializationId) return "Pilih poli dulu";
         break;
       case "doctor_picker":
-        if (!data.doctorId) return false;
+        if (!data.doctorId) return "Pilih dokter dulu";
         break;
       case "schedule_picker":
-        if (!data.visitDate || !data.scheduleId) return false;
-        if (data.bookingOrderType === "EXACT_TIME" && !data.slotTime) return false;
+        if (!data.visitDate) return "Pilih tanggal dulu";
+        if (!data.scheduleId) return "Pilih jadwal dulu";
+        if (data.bookingOrderType === "EXACT_TIME" && !data.slotTime) return "Pilih jam dulu";
         break;
       case "patient_lookup":
         // Not-found is a valid outcome: the patient_data block (wherever the builder placed
         // it) gates registration itself, so the lookup page must not also require it.
-        if (!data.lookupDone) return false;
+        if (!data.lookupDone) return "Cek data pasien dulu";
+        // A match must be acknowledged — the patient confirms the masked name/HP is theirs
+        // before we book against that record.
+        if (data.found && !data.identityConfirmed) return "Konfirmasi data Anda dulu";
         break;
       case "patient_data": {
         if (data.found) break; // existing patient — form hidden
         const p = data.patient;
-        if (!data.calqPatientId) return false;
-        if (!p.nama_lengkap || !p.tanggal_lahir || !p.jenis_kelamin || !p.nomor_hp) return false;
+        if (!data.calqPatientId) return "Simpan data diri dulu";
+        if (!p.nama_lengkap || !p.tanggal_lahir || !p.jenis_kelamin || !p.nomor_hp) {
+          return "Lengkapi data diri dulu";
+        }
         for (const f of block.config.customFields ?? []) {
-          if (f.required && !(data.answers[f.id] ?? "").trim()) return false;
+          if (f.required && !(data.answers[f.id] ?? "").trim()) return "Lengkapi data diri dulu";
         }
         break;
       }
       case "pricing_payment":
-        if (data.procedureIds.length + data.bundleIds.length === 0 || !data.jenisPembayaran) {
-          return false;
-        }
+        if (data.procedureIds.length + data.bundleIds.length === 0) return "Pilih tindakan dulu";
+        if (!data.jenisPembayaran) return "Pilih cara pembayaran dulu";
         break;
       case "summary_consent":
-        if (!data.consent) return false;
+        if (!data.consent) return "Setujui ketentuan dulu";
         break;
     }
   }
-  return true;
+  return null;
 }

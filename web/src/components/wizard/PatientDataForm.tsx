@@ -8,6 +8,14 @@ import { cn } from "@/lib/utils";
 import DateSegments from "./DateSegments";
 import type { BlockProps } from "./types";
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 export default function PatientDataForm({ slug, block, data, update }: BlockProps) {
   const askAddress = block.config.askAddress ?? true;
   const customFields = block.config.customFields ?? [];
@@ -43,7 +51,9 @@ export default function PatientDataForm({ slug, block, data, update }: BlockProp
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div>
+      <SectionLabel>Identitas</SectionLabel>
+      <div className="grid gap-4 rounded-xl border border-border p-4 sm:grid-cols-2">
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="nama">Nama lengkap (sesuai KTP)</Label>
           <Input
@@ -93,6 +103,12 @@ export default function PatientDataForm({ slug, block, data, update }: BlockProp
             ))}
           </div>
         </div>
+      </div>
+      </div>
+
+      <div>
+      <SectionLabel>Kontak</SectionLabel>
+      <div className="grid gap-4 rounded-xl border border-border p-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="hp">Nomor HP / WhatsApp</Label>
           <Input
@@ -130,6 +146,7 @@ export default function PatientDataForm({ slug, block, data, update }: BlockProp
             />
           </div>
         )}
+      </div>
       </div>
 
       {customFields.length > 0 && (

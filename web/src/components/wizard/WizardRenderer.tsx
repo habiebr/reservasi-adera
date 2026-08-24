@@ -20,7 +20,7 @@ import SummaryConsent from "./SummaryConsent";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   emptyPatient,
-  pageComplete,
+  nextHint,
   visiblePages,
   type BlockProps,
   type WizardData,
@@ -77,10 +77,14 @@ function carriedRows(
 function CarriedSummary({ rows }: { rows: { label: string; value: string }[] }) {
   if (rows.length === 0) return null;
   return (
-    <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-border bg-secondary/50 px-4 py-2.5">
+    <div className="mt-4 flex flex-wrap gap-2">
       {rows.map((r) => (
-        <span key={r.label} className="text-xs text-muted-foreground">
-          {r.label}: <span className="font-medium text-foreground">{r.value}</span>
+        <span
+          key={r.label}
+          className="inline-flex items-center gap-1.5 rounded-full bg-primary-muted px-3 py-1.5 text-xs text-accent-foreground"
+        >
+          <span className="opacity-70">{r.label}</span>
+          <span className="font-medium">{r.value}</span>
         </span>
       ))}
     </div>
@@ -183,7 +187,8 @@ export default function WizardRenderer({
   const clampedStep = Math.min(step, Math.max(0, pages.length - 1));
   const page = pages[clampedStep];
   const isLast = clampedStep === pages.length - 1;
-  const canNext = page ? pageComplete(page, data) : false;
+  const hint = page ? nextHint(page, data) : "Halaman belum siap";
+  const canNext = hint === null;
 
   const submit = async () => {
     if (preview) return;
@@ -271,33 +276,37 @@ export default function WizardRenderer({
         </p>
       )}
 
-      <div className="mt-8 flex items-center justify-between gap-3 border-t border-border pt-6">
+      {/* Sticky so the action never scrolls out of reach on a long page. `sticky` (not `fixed`)
+          keeps it inside the admin preview's own scroll container too. */}
+      <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-8 flex items-center justify-between gap-3 rounded-b-2xl border-t border-border bg-card/95 px-5 py-4 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:-mx-8 sm:-mb-8 sm:px-8">
         <Button
           variant="outline"
           onClick={() => setStep((s) => Math.max(0, s - 1))}
           disabled={clampedStep === 0 || submitting}
-          className="h-11 gap-1"
+          className="h-11 gap-1 px-4"
         >
-          <ArrowLeft className="h-4 w-4" /> Kembali
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">Kembali</span>
         </Button>
         {isLast
           ? (
             <Button
               onClick={submit}
               disabled={!canNext || submitting || preview}
-              className="h-11 min-w-[170px] gap-1 bg-success text-success-foreground hover:bg-success/90"
+              className="h-11 min-w-0 flex-1 gap-1 bg-success text-success-foreground hover:bg-success/90 sm:flex-none sm:min-w-[170px]"
               title={preview ? "Nonaktif dalam pratinjau" : undefined}
             >
-              {submitting ? "Memproses…" : "Lanjut ke Pembayaran"}
+              {submitting ? "Memproses…" : (hint ?? "Lanjut ke Pembayaran")}
             </Button>
           )
           : (
             <Button
               onClick={() => setStep((s) => s + 1)}
               disabled={!canNext || submitting}
-              className="h-11 gap-1 px-6"
+              className="h-11 min-w-0 flex-1 gap-1 px-6 sm:flex-none"
             >
-              Lanjut <ArrowRight className="h-4 w-4" />
+              {hint ?? "Lanjut"}
+              {canNext && <ArrowRight className="h-4 w-4" />}
             </Button>
           )}
       </div>

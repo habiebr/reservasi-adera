@@ -6,12 +6,33 @@ import { apiGet, type BundlesResponse, type ProceduresResponse } from "@/lib/api
 import { amountDue, dpAmount, formatRupiah, totalAmount, type PricedItem } from "@shared/pricing";
 import type { BlockProps } from "./types";
 
+/** Money rows stay label-left / amount-right — that is what a receipt should look like. */
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 py-1.5">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-right text-sm font-medium text-foreground">{value}</span>
+      <span className="text-right text-sm font-medium tabular-nums text-foreground">{value}</span>
     </div>
+  );
+}
+
+/** Detail rows stack instead, so long doctor names and dates get the full width. */
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 text-sm font-semibold leading-snug text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+      {children}
+    </p>
   );
 }
 
@@ -73,25 +94,31 @@ export default function SummaryConsent({ slug, block, data, update }: BlockProps
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-border bg-card p-4">
-        <h3 className="mb-2 text-sm font-bold text-foreground">Kunjungan</h3>
-        <Row label="Poli" value={data.specializationName ?? "-"} />
-        <Row label="Dokter" value={data.doctorName ?? "-"} />
-        <Row label="Tanggal" value={tanggal} />
-        <Row
-          label="Jam"
-          value={data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel}` : "-")}
-        />
+      <section>
+        <SectionLabel>Detail kunjungan</SectionLabel>
+        <dl className="grid gap-3 rounded-xl border border-border bg-card p-4">
+          <Field label="Poli" value={data.specializationName ?? "-"} />
+          <Field label="Dokter" value={data.doctorName ?? "-"} />
+          <Field label="Tanggal" value={tanggal} />
+          <Field
+            label="Jam"
+            value={data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel}` : "-")}
+          />
+        </dl>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-4">
-        <h3 className="mb-2 text-sm font-bold text-foreground">Pasien</h3>
-        <Row
-          label="Nama"
-          value={data.found ? (data.maskedName ?? "-") : data.patient.nama_lengkap || "-"}
-        />
-        {data.patient.mrn && <Row label="No. RM" value={data.patient.mrn} />}
-        {data.patient.nik && <Row label="NIK" value={data.patient.nik.replace(/^(\d{6})\d{6}/, "$1******")} />}
+      <section>
+        <SectionLabel>Data pasien</SectionLabel>
+        <dl className="grid gap-3 rounded-xl border border-border bg-card p-4">
+          <Field
+            label="Nama"
+            value={data.found ? (data.maskedName ?? "-") : data.patient.nama_lengkap || "-"}
+          />
+          {data.patient.mrn && <Field label="No. rekam medis" value={data.patient.mrn} />}
+          {data.patient.nik && (
+            <Field label="NIK" value={data.patient.nik.replace(/^(\d{6})\d{6}/, "$1******")} />
+          )}
+        </dl>
       </section>
 
       <section className="rounded-xl border border-border bg-card p-4">

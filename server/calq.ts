@@ -3,6 +3,7 @@
 // the live sandbox (see docs/ARCHITECTURE.md): the swagger DTO for POST /appointments is
 // misleading — the shapes below are the authoritative, probe-confirmed ones.
 import { appSettings } from "./db.ts";
+import { canonPhone } from "@shared/identity.ts";
 
 export interface CalqCreds {
   baseUrl: string;
@@ -125,6 +126,28 @@ export async function findCalqPatientByMrn(
   const list = Array.isArray(data) ? data : [];
   return (list as CalqPatient[]).find(
     (p) => (p.medicalRecordNumber ?? "").trim().toUpperCase() === wanted,
+  ) ?? null;
+}
+
+/**
+ * Exact-phone match against mobilePhone or whatsappNumber. Calq stores phones inconsistently
+ * (0812…, +62812…, 62812…), so both sides are canonicalised before comparing rather than
+ * trusting the fuzzy `search` hit. Searched by the local 0-prefixed form, which is how the
+ * numbers are typed into Calq; a null return may mean "not indexed" as much as "not found".
+ */
+export async function findCalqPatientByPhone(
+  creds: CalqCreds,
+  phone: string,
+): Promise<CalqPatient | null> {
+  const wanted = canonPhone(phone);
+  if (!wanted) return null;
+  const local = "0" + wanted.slice(2);
+  const data = await calqGet(creds, `/patients?search=${encodeURIComponent(local)}`).catch(() =>
+    null
+  );
+  const list = Array.isArray(data) ? data : [];
+  return (list as CalqPatient[]).find(
+    (p) => canonPhone(p.mobilePhone) === wanted || canonPhone(p.whatsappNumber) === wanted,
   ) ?? null;
 }
 

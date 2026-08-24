@@ -422,7 +422,7 @@ export default function FormEditor() {
           {showPreview
             ? (
               <div className="rounded-[2rem] border-8 border-foreground/80 bg-background shadow-xl">
-                <div className="max-h-[75vh] w-full overflow-y-auto rounded-[1.5rem] p-4">
+                <div className="max-h-[75vh] w-full overflow-y-auto rounded-[1.5rem] p-5">
                   <PreviewBoundary defKey={JSON.stringify(def)}>
                     <WizardRenderer
                       slug={form.slug}
