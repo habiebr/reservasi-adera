@@ -1,6 +1,6 @@
 // deno test shared/
 import { assertEquals } from "jsr:@std/assert@1";
-import { defaultDefinition, newBlock, validateDefinition } from "./formTypes.ts";
+import { defaultDefinition, isDateFirst, newBlock, validateDefinition } from "./formTypes.ts";
 import { amountDue, dpAmount, totalAmount } from "./pricing.ts";
 import { canonPhone, isValidNik, isValidTanggalLahir, maskDob, maskName } from "./identity.ts";
 
@@ -24,6 +24,28 @@ Deno.test("wrong relative order is reported", () => {
   const payIdx = def.pages.findIndex((p) => p.blocks.some((b) => b.kind === "pricing_payment"));
   const [pay] = def.pages.splice(payIdx, 1);
   def.pages.unshift(pay);
+  const problems = validateDefinition(def);
+  assertEquals(problems.some((p) => p.includes("Urutan blok salah")), true);
+});
+
+Deno.test("jadwal before dokter is allowed — some polis are browsed by date", () => {
+  const def = defaultDefinition(makeId);
+  const docIdx = def.pages.findIndex((p) => p.blocks.some((b) => b.kind === "doctor_picker"));
+  const schIdx = def.pages.findIndex((p) => p.blocks.some((b) => b.kind === "schedule_picker"));
+  [def.pages[docIdx], def.pages[schIdx]] = [def.pages[schIdx], def.pages[docIdx]];
+  assertEquals(validateDefinition(def), []);
+  assertEquals(isDateFirst(def), true);
+});
+
+Deno.test("isDateFirst is false for the default doctor-first form", () => {
+  assertEquals(isDateFirst(defaultDefinition(makeId)), false);
+});
+
+Deno.test("jadwal still cannot jump ahead of poli", () => {
+  const def = defaultDefinition(makeId);
+  const schIdx = def.pages.findIndex((p) => p.blocks.some((b) => b.kind === "schedule_picker"));
+  const [sch] = def.pages.splice(schIdx, 1);
+  def.pages.unshift(sch);
   const problems = validateDefinition(def);
   assertEquals(problems.some((p) => p.includes("Urutan blok salah")), true);
 });

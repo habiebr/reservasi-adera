@@ -1,4 +1,4 @@
-import type { FormBlock, FormDefinition, FormPage } from "@shared/formTypes";
+import type { BlockConfig, FormBlock, FormDefinition, FormPage } from "@shared/formTypes";
 
 export interface WizardPatient {
   nik: string;
@@ -62,6 +62,11 @@ export interface BlockProps {
   block: FormBlock;
   data: WizardData;
   update: (patch: Partial<WizardData>) => void;
+  /** The form puts "Pilih Jadwal" before "Pilih Dokter" — see isDateFirst(). */
+  dateFirst: boolean;
+  /** The schedule block's own config, needed by whichever block ends up owning the jam
+   * picker: in a date-first form that is "Pilih Dokter", not "Pilih Jadwal". */
+  scheduleConfig: BlockConfig;
 }
 
 /** Pages the patient actually steps through: enabled blocks only; a page reduced to only
@@ -92,7 +97,7 @@ export function patientDataComplete(p: WizardPatient): boolean {
 
 /** Why this page can't be left yet — null when it is satisfied. The string doubles as the
  * Lanjut button's label, so a disabled button always says what it is waiting for. */
-export function nextHint(page: FormPage, data: WizardData): string | null {
+export function nextHint(page: FormPage, data: WizardData, dateFirst = false): string | null {
   for (const block of page.blocks) {
     switch (block.kind) {
       case "info_page":
@@ -110,9 +115,16 @@ export function nextHint(page: FormPage, data: WizardData): string | null {
         break;
       case "doctor_picker":
         if (!data.doctorId) return "Pilih dokter dulu";
+        // Date-first forms pick the jam here, right under the chosen doctor.
+        if (dateFirst) {
+          if (!data.scheduleId) return "Pilih jadwal dulu";
+          if (data.bookingOrderType === "EXACT_TIME" && !data.slotTime) return "Pilih jam dulu";
+        }
         break;
       case "schedule_picker":
         if (!data.visitDate) return "Pilih tanggal dulu";
+        // Date-first forms have no doctor yet, so there is no slot to demand here.
+        if (dateFirst) break;
         if (!data.scheduleId) return "Pilih jadwal dulu";
         if (data.bookingOrderType === "EXACT_TIME" && !data.slotTime) return "Pilih jam dulu";
         break;

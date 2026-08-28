@@ -19,5 +19,5 @@
     }
   },
   "include": ["src", "../shared"],
-  "exclude": ["../shared/shared_test.ts"]
+  "exclude": ["../shared/*_test.ts"]
 }

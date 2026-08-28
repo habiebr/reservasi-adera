@@ -1,30 +1,57 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
-import { CalendarDays, Users } from "lucide-react";
+import { CalendarDays, Loader2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet, type SlotsResponse } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { apiGet, type DoctorOption } from "@/lib/api";
+import SlotList from "./SlotList";
 import type { BlockProps } from "./types";
 
 const fmtDate = (d: Date) => format(d, "yyyy-MM-dd");
 
-export default function SchedulePicker({ slug, block, data, update }: BlockProps) {
+export default function SchedulePicker({ slug, block, data, update, dateFirst }: BlockProps) {
   const maxDaysAhead = block.config.maxDaysAhead ?? 30;
   const timeDisplay = block.config.timeDisplay ?? "segmented";
-  const [slots, setSlots] = useState<SlotsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  const practiceDays = useMemo(() => new Set(data.practiceDays ?? []), [data.practiceDays]);
+  // Date-first forms have no doctor yet, so the calendar opens on every day *anyone* in the
+  // poli practises; the doctor block downstream narrows the list to the chosen day.
+  const [poliDays, setPoliDays] = useState<number[] | null>(null);
+  const [poliDaysError, setPoliDaysError] = useState("");
+  // Per-date availability, fetched after the calendar is already on screen: a day whose
+  // sessions are all taken gets greyed out once this lands. Absent = fall back to the
+  // weekly practice days, so a slow or failed answer never blocks the patient.
+  const [dayInfo, setDayInfo] = useState<Record<string, { available: boolean }> | null>(null);
+
+  useEffect(() => {
+    if (!dateFirst || !data.specializationId) return;
+    setPoliDays(null);
+    setPoliDaysError("");
+    apiGet<{ doctors: DoctorOption[] }>(
+      `/api/calq/doctors?slug=${slug}&specializationId=${data.specializationId}`,
+    )
+      .then((r) => setPoliDays([...new Set(r.doctors.flatMap((d) => d.practiceDays))].sort()))
+      .catch((e) => setPoliDaysError(e.message));
+  }, [dateFirst, slug, data.specializationId]);
+
+  useEffect(() => {
+    if (!data.specializationId) return;
+    if (dateFirst ? !poliDays : !data.doctorId) return;
+    setDayInfo(null);
+    const from = fmtDate(new Date());
+    apiGet<{ days: Record<string, { available: boolean }> }>(
+      `/api/calq/days?slug=${slug}&specializationId=${data.specializationId}` +
+        `&from=${from}&days=${maxDaysAhead}` +
+        (dateFirst ? "" : `&doctorId=${data.doctorId}`),
+    )
+      .then((r) => setDayInfo(r.days))
+      .catch(() => setDayInfo(null));
+  }, [slug, data.specializationId, data.doctorId, dateFirst, poliDays, maxDaysAhead]);
+
+  const practiceDays = useMemo(
+    () => new Set(dateFirst ? poliDays ?? [] : data.practiceDays ?? []),
+    [dateFirst, poliDays, data.practiceDays],
+  );
   const today = useMemo(() => {
     const t = new Date();
     t.setHours(0, 0, 0, 0);
@@ -35,28 +62,37 @@ export default function SchedulePicker({ slug, block, data, update }: BlockProps
     [today, maxDaysAhead],
   );
 
-  useEffect(() => {
-    if (!data.visitDate || !data.specializationId || !data.doctorId) return;
-    setLoading(true);
-    setSlots(null);
-    setError("");
-    apiGet<SlotsResponse>(
-      `/api/calq/slots?slug=${slug}&specializationId=${data.specializationId}&doctorId=${data.doctorId}&date=${data.visitDate}`,
-    )
-      .then(setSlots)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [slug, data.visitDate, data.specializationId, data.doctorId]);
-
-  if (!data.doctorId) {
+  if (dateFirst && !data.specializationId) {
+    return <p className="text-sm text-muted-foreground">Pilih poli terlebih dahulu.</p>;
+  }
+  if (!dateFirst && !data.doctorId) {
     return <p className="text-sm text-muted-foreground">Pilih dokter terlebih dahulu.</p>;
+  }
+  if (poliDaysError) {
+    return (
+      <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{poliDaysError}</p>
+    );
+  }
+  if (dateFirst && !poliDays) {
+    return <Skeleton className="h-80 rounded-xl" />;
+  }
+  if (dateFirst && poliDays!.length === 0) {
+    return (
+      <p className="rounded-lg bg-warning-muted p-4 text-sm text-warning-foreground">
+        Belum ada dokter dengan jadwal praktik di poli ini.
+      </p>
+    );
   }
 
   const selectedDate = data.visitDate ? new Date(`${data.visitDate}T12:00:00`) : undefined;
 
   // One predicate drives both the disabled state and the legend, so the two can never disagree.
-  const unavailable = (d: Date) =>
-    d < today || d > maxDate || (practiceDays.size > 0 && !practiceDays.has(d.getDay()));
+  // `dayInfo` only ever narrows what the weekly schedule already allows.
+  const unavailable = (d: Date) => {
+    if (d < today || d > maxDate) return true;
+    if (practiceDays.size > 0 && !practiceDays.has(d.getDay())) return true;
+    return dayInfo?.[fmtDate(d)]?.available === false;
+  };
 
   return (
     <div className="space-y-5">
@@ -70,7 +106,21 @@ export default function SchedulePicker({ slug, block, data, update }: BlockProps
           selected={selectedDate}
           onSelect={(d) => {
             if (!d) return;
-            update({ visitDate: fmtDate(d), scheduleId: undefined, slotTime: undefined });
+            // Date-first: a new date can invalidate the doctor picked downstream, so drop it.
+            update(
+              dateFirst
+                ? {
+                  visitDate: fmtDate(d),
+                  doctorId: undefined,
+                  doctorName: undefined,
+                  practiceDays: undefined,
+                  bookingOrderType: undefined,
+                  scheduleId: undefined,
+                  slotTime: undefined,
+                  sessionLabel: undefined,
+                }
+                : { visitDate: fmtDate(d), scheduleId: undefined, slotTime: undefined },
+            );
           }}
           disabled={unavailable}
           modifiers={{ available: (d) => !unavailable(d) }}
@@ -83,12 +133,18 @@ export default function SchedulePicker({ slug, block, data, update }: BlockProps
         <div className="mt-1 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 px-2 pb-2">
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-success" aria-hidden />
-            Dokter praktik
+            {dateFirst ? "Ada dokter praktik" : "Dokter praktik"}
           </span>
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-muted-foreground/40" aria-hidden />
-            Tidak ada jadwal
+            Tidak ada jadwal / penuh
           </span>
+          {!dayInfo && (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+              Memeriksa ketersediaan…
+            </span>
+          )}
         </div>
       </div>
 
@@ -97,153 +153,25 @@ export default function SchedulePicker({ slug, block, data, update }: BlockProps
           <p className="mb-2 text-sm font-semibold text-foreground">
             {format(selectedDate!, "EEEE, d MMMM yyyy", { locale: localeId })}
           </p>
-          {loading && (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-11 rounded-lg" />)}
-            </div>
-          )}
-          {error && (
-            <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>
-          )}
-          {slots && slots.bookingOrderType === "EXACT_TIME" && (
-            <TimeSlotPicker slots={slots} display={timeDisplay} data={data} update={update} />
-          )}
-          {slots && slots.bookingOrderType !== "EXACT_TIME" && (
-            <QueueSessions slots={slots} data={data} update={update} />
-          )}
+          {dateFirst
+            ? (
+              <p className="text-sm text-muted-foreground">
+                Selanjutnya pilih dokter yang praktik pada tanggal ini.
+              </p>
+            )
+            : (
+              <SlotList
+                slug={slug}
+                specializationId={data.specializationId!}
+                doctorId={data.doctorId!}
+                date={data.visitDate}
+                timeDisplay={timeDisplay}
+                data={data}
+                update={update}
+              />
+            )}
         </div>
       )}
-    </div>
-  );
-}
-
-function TimeSlotPicker({
-  slots,
-  display,
-  data,
-  update,
-}: {
-  slots: SlotsResponse;
-  display: "segmented" | "dropdown";
-  data: BlockProps["data"];
-  update: BlockProps["update"];
-}) {
-  const available = slots.timeSlots.filter((s) => s.available);
-  if (slots.timeSlots.length === 0) {
-    return (
-      <p className="rounded-lg bg-warning-muted p-3 text-sm text-warning-foreground">
-        Tidak ada jadwal praktik pada tanggal ini.
-      </p>
-    );
-  }
-  if (available.length === 0) {
-    return (
-      <p className="rounded-lg bg-warning-muted p-3 text-sm text-warning-foreground">
-        Semua jam pada tanggal ini sudah penuh — silakan pilih tanggal lain.
-      </p>
-    );
-  }
-
-  if (display === "dropdown") {
-    return (
-      <Select
-        value={data.slotTime ?? ""}
-        onValueChange={(v) => {
-          const slot = slots.timeSlots.find((s) => s.startTime === v);
-          if (slot) update({ slotTime: v, scheduleId: slot.scheduleId });
-        }}
-      >
-        <SelectTrigger className="h-11 w-full sm:w-64">
-          <SelectValue placeholder="Pilih jam kunjungan" />
-        </SelectTrigger>
-        <SelectContent>
-          {available.map((s) => (
-            <SelectItem key={`${s.scheduleId}-${s.startTime}`} value={s.startTime}>
-              {s.startTime} – {s.endTime}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    );
-  }
-
-  return (
-    <div role="radiogroup" aria-label="Pilihan jam" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {slots.timeSlots.map((s) => {
-        const selected = data.slotTime === s.startTime && data.scheduleId === s.scheduleId;
-        return (
-          <button
-            key={`${s.scheduleId}-${s.startTime}`}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={!s.available}
-            onClick={() => update({ slotTime: s.startTime, scheduleId: s.scheduleId })}
-            className={cn(
-              "flex h-11 items-center justify-center rounded-lg border-2 text-sm font-medium tabular-nums transition-all",
-              !s.available
-                ? "cursor-not-allowed border-border bg-muted text-muted-foreground line-through opacity-60"
-                : selected
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-card text-foreground hover:border-primary/60",
-            )}
-          >
-            {s.startTime}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function QueueSessions({
-  slots,
-  data,
-  update,
-}: {
-  slots: SlotsResponse;
-  data: BlockProps["data"];
-  update: BlockProps["update"];
-}) {
-  if (slots.sessions.length === 0) {
-    return (
-      <p className="rounded-lg bg-warning-muted p-3 text-sm text-warning-foreground">
-        Tidak ada sesi praktik pada tanggal ini.
-      </p>
-    );
-  }
-  return (
-    <div className="space-y-2">
-      {slots.sessions.map((s) => {
-        const selected = data.scheduleId === s.scheduleId;
-        const label = `${s.startTime} – ${s.endTime}`;
-        return (
-          <button
-            key={s.scheduleId}
-            type="button"
-            onClick={() =>
-              update({ scheduleId: s.scheduleId, slotTime: null, sessionLabel: label })}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-xl border-2 p-4 text-left transition-all",
-              selected
-                ? "border-primary bg-primary-muted"
-                : "border-border bg-card hover:border-primary/60",
-            )}
-          >
-            <span
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                selected ? "bg-primary text-primary-foreground" : "bg-secondary text-primary",
-              )}
-            >
-              <Users className="h-5 w-5" />
-            </span>
-            <span className="text-sm font-semibold text-foreground">
-              Sesi praktik {label}
-            </span>
-          </button>
-        );
-      })}
     </div>
   );
 }

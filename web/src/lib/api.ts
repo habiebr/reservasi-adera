@@ -51,6 +51,11 @@ export interface DoctorOption {
   bookingOrderType: string;
   practiceDays: number[];
   schedules: { id: number; dayOfWeek: number; startTime: string; endTime: string }[];
+  /** Present only when the request carried a `date`: that day's real availability. */
+  practicesOnDate?: boolean;
+  /** EXACT_TIME doctors only — open slots left on that date; null for QUEUE. */
+  slotsLeft?: number | null;
+  available?: boolean;
 }
 
 export interface SlotsResponse {

@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { Search, UserRound } from "lucide-react";
+import { format } from "date-fns";
+import { id as localeId } from "date-fns/locale";
+import { Clock, Search, UserRound } from "lucide-react";
 import { apiGet, type DoctorOption } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import SlotList from "./SlotList";
 import type { BlockProps } from "./types";
 
 const DAY_NAMES = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
@@ -34,23 +37,35 @@ function DoctorAvatar({ url, selected }: { url?: string | null; selected: boolea
   );
 }
 
-export default function DoctorPicker({ slug, data, update }: BlockProps) {
+export default function DoctorPicker(
+  { slug, data, update, dateFirst, scheduleConfig }: BlockProps,
+) {
   const [doctors, setDoctors] = useState<DoctorOption[] | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
 
+  // Date-first: ask the server about that exact date, so the list reflects who is really
+  // bookable then — not merely who practises on that weekday.
+  const forDate = dateFirst ? data.visitDate : undefined;
+
   useEffect(() => {
     if (!data.specializationId) return;
+    if (dateFirst && !forDate) return;
     setDoctors(null);
+    setError("");
     apiGet<{ doctors: DoctorOption[] }>(
-      `/api/calq/doctors?slug=${slug}&specializationId=${data.specializationId}`,
+      `/api/calq/doctors?slug=${slug}&specializationId=${data.specializationId}` +
+        (forDate ? `&date=${forDate}` : ""),
     )
       .then((r) => setDoctors(r.doctors))
       .catch((e) => setError(e.message));
-  }, [slug, data.specializationId]);
+  }, [slug, data.specializationId, dateFirst, forDate]);
 
   if (!data.specializationId) {
     return <p className="text-sm text-muted-foreground">Pilih poli terlebih dahulu.</p>;
+  }
+  if (dateFirst && !data.visitDate) {
+    return <p className="text-sm text-muted-foreground">Pilih tanggal terlebih dahulu.</p>;
   }
   if (error) {
     return <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{error}</p>;
@@ -62,18 +77,30 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
       </div>
     );
   }
-  if (doctors.length === 0) {
+  // Date-first: only whoever is on duty that day, per Calq's own answer for that date.
+  const visitDay = data.visitDate ? new Date(`${data.visitDate}T12:00:00`) : null;
+  const onDuty = dateFirst && visitDay
+    ? doctors.filter((d) => d.practicesOnDate ?? d.practiceDays.includes(visitDay.getDay()))
+    : doctors;
+  const anyFree = onDuty.some((d) => d.available !== false);
+
+  if (onDuty.length === 0 || !anyFree) {
+    const hari = visitDay ? format(visitDay, "EEEE, d MMMM yyyy", { locale: localeId }) : "";
     return (
       <p className="rounded-lg bg-warning-muted p-4 text-sm text-warning-foreground">
-        Belum ada dokter dengan jadwal praktik di poli ini.
+        {!dateFirst || !visitDay
+          ? "Belum ada dokter dengan jadwal praktik di poli ini."
+          : onDuty.length === 0
+          ? `Tidak ada dokter yang praktik pada ${hari} — silakan kembali dan pilih tanggal lain.`
+          : `Jadwal semua dokter pada ${hari} sudah penuh — silakan kembali dan pilih tanggal lain.`}
       </p>
     );
   }
 
   // A search box over two names is clutter; past a handful it is the fastest way in.
-  const searchable = doctors.length > 3;
+  const searchable = onDuty.length > 3;
   const q = query.trim().toLowerCase();
-  const shown = q ? doctors.filter((d) => d.name.toLowerCase().includes(q)) : doctors;
+  const shown = q ? onDuty.filter((d) => d.name.toLowerCase().includes(q)) : onDuty;
 
   return (
     <div className="space-y-3">
@@ -97,25 +124,31 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
       <div role="radiogroup" aria-label="Pilihan dokter" className="space-y-3">
       {shown.map((doc) => {
         const selected = data.doctorId === doc.id;
+        const full = doc.available === false;
         return (
+          <div key={doc.id}>
           <button
-            key={doc.id}
             type="button"
             role="radio"
             aria-checked={selected}
+            disabled={full}
             onClick={() =>
               update({
                 doctorId: doc.id,
                 doctorName: doc.name,
                 practiceDays: doc.practiceDays,
                 bookingOrderType: doc.bookingOrderType,
-                visitDate: undefined,
+                // date-first already has the date — only the slot needs re-picking
+                visitDate: dateFirst ? data.visitDate : undefined,
                 scheduleId: undefined,
                 slotTime: undefined,
+                sessionLabel: undefined,
               })}
             className={cn(
               "flex w-full items-start gap-3 rounded-xl border-2 p-4 text-left transition-all",
-              selected
+              full
+                ? "cursor-not-allowed border-border bg-muted opacity-60"
+                : selected
                 ? "border-primary bg-primary-muted"
                 : "border-border bg-card hover:border-primary/60",
             )}
@@ -123,6 +156,20 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
             <DoctorAvatar url={doc.photoUrl} selected={selected} />
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-foreground">{doc.name}</span>
+              {dateFirst && (
+                <span
+                  className={cn(
+                    "mt-1 block text-xs font-medium",
+                    full ? "text-muted-foreground" : "text-success",
+                  )}
+                >
+                  {full
+                    ? "Penuh pada tanggal ini"
+                    : typeof doc.slotsLeft === "number"
+                    ? `${doc.slotsLeft} jam tersisa`
+                    : "Tersedia pada tanggal ini"}
+                </span>
+              )}
               <span className="mt-2 flex flex-wrap gap-1">
                 {doc.practiceDays.map((d) => (
                   <span
@@ -135,6 +182,25 @@ export default function DoctorPicker({ slug, data, update }: BlockProps) {
               </span>
             </span>
           </button>
+          {/* Date-first: the jam/sesi picker rides along here — this is the first moment both
+              the date and the doctor are known, which is all Calq needs to quote slots. */}
+          {dateFirst && selected && data.visitDate && (
+            <div className="mt-3 rounded-xl border border-border bg-secondary/30 p-4">
+              <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Clock className="h-4 w-4 text-primary" /> Pilih jam kunjungan
+              </p>
+              <SlotList
+                slug={slug}
+                specializationId={data.specializationId!}
+                doctorId={doc.id}
+                date={data.visitDate}
+                timeDisplay={scheduleConfig.timeDisplay ?? "segmented"}
+                data={data}
+                update={update}
+              />
+            </div>
+          )}
+          </div>
         );
       })}
       </div>

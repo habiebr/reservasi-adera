@@ -38,9 +38,12 @@ interface AdminBundle {
 
 export default function BlockConfigPanel({
   block,
+  dateFirst,
   onChange,
 }: {
   block: FormBlock;
+  /** The form asks for the date before the doctor — changes what these settings drive. */
+  dateFirst: boolean;
   onChange: (patch: Partial<FormBlock>) => void;
 }) {
   const c = block.config;
@@ -80,6 +83,13 @@ export default function BlockConfigPanel({
 
       {block.kind === "schedule_picker" && (
         <>
+          {dateFirst && (
+            <p className="rounded-lg bg-info/10 p-3 text-xs leading-relaxed text-foreground">
+              Blok ini berada <strong>sebelum</strong> Pilih Dokter, jadi pasien memilih tanggal
+              dulu: kalender menampilkan semua hari praktik di poli ini, lalu daftar dokter
+              menyesuaikan hari yang dipilih. Pilihan jam ikut pindah ke blok Pilih Dokter.
+            </p>
+          )}
           <div className="space-y-1.5">
             <Label className="text-xs">Maksimal hari ke depan</Label>
             <Input
@@ -92,7 +102,9 @@ export default function BlockConfigPanel({
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Tampilan pilihan jam</Label>
+            <Label className="text-xs">
+              Tampilan pilihan jam{dateFirst ? " (tampil di blok Pilih Dokter)" : ""}
+            </Label>
             <div className="flex gap-2">
               {(["segmented", "dropdown"] as const).map((v) => (
                 <button
@@ -111,6 +123,14 @@ export default function BlockConfigPanel({
             </div>
           </div>
         </>
+      )}
+
+      {block.kind === "doctor_picker" && dateFirst && (
+        <p className="rounded-lg bg-info/10 p-3 text-xs leading-relaxed text-foreground">
+          Blok ini berada <strong>setelah</strong> Pilih Jadwal: daftarnya hanya memuat dokter
+          yang praktik pada tanggal yang dipilih pasien, dan pilihan jam muncul di bawah dokter
+          yang dipilih.
+        </p>
       )}
 
       {block.kind === "patient_lookup" && (

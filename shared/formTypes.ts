@@ -13,7 +13,7 @@ export type BlockKind =
   | "summary_consent"
   | "screening";
 
-/** Core blocks: exactly one each, enabled, in this relative order across the whole form. */
+/** Core blocks: exactly one each, enabled. Also the order a new form starts out in. */
 export const SEQUENCE: BlockKind[] = [
   "poli_picker",
   "doctor_picker",
@@ -23,6 +23,25 @@ export const SEQUENCE: BlockKind[] = [
   "pricing_payment",
   "summary_consent",
 ];
+
+/**
+ * Which stage of the flow each core block belongs to. Stages must appear in ascending order,
+ * but blocks *sharing* a stage may be arranged either way round: some polis are browsed by
+ * doctor ("siapa dokternya, lalu kapan praktik"), others by date ("kapan bisa datang, lalu
+ * siapa yang praktik hari itu"). Only dokter ↔ jadwal share a stage today.
+ */
+const STAGE: Record<BlockKind, number> = {
+  poli_picker: 0,
+  doctor_picker: 1,
+  schedule_picker: 1,
+  patient_lookup: 2,
+  patient_data: 3,
+  pricing_payment: 4,
+  summary_consent: 5,
+  // not core — never consulted, listed to keep the record exhaustive
+  info_page: -1,
+  screening: -1,
+};
 
 export const BLOCK_LABELS: Record<BlockKind, string> = {
   info_page: "Halaman Info",
@@ -125,6 +144,19 @@ export function isCoreKind(kind: BlockKind): boolean {
 }
 
 /**
+ * True when the form asks for the visit date *before* the doctor. The wizard flips its two
+ * pickers around this: the calendar then offers every day any doctor in the poli practices,
+ * the doctor list narrows to whoever practises on the chosen day, and the jam/sesi picker
+ * moves along with it — Calq can only quote slots once both date and doctor are known.
+ */
+export function isDateFirst(def: FormDefinition): boolean {
+  const flat = def.pages.flatMap((p) => p.blocks).filter((b) => b.enabled);
+  const doctorAt = flat.findIndex((b) => b.kind === "doctor_picker");
+  const scheduleAt = flat.findIndex((b) => b.kind === "schedule_picker");
+  return scheduleAt >= 0 && (doctorAt < 0 || scheduleAt < doctorAt);
+}
+
+/**
  * Validate a definition for publishing. Returns a list of human-readable (Indonesian)
  * problems; an empty list means the form is publishable. The builder shows these live;
  * the server enforces them at publish time and on every save of a published form.
@@ -151,16 +183,18 @@ export function validateDefinition(def: FormDefinition): string[] {
     }
   }
 
-  // Relative order of the core blocks across the flattened list.
+  // Stage order of the core blocks across the flattened list: never allowed to go backwards.
+  // Equal stages are fine in any order — that is what makes dokter ↔ jadwal interchangeable.
   const coreOrder = flat.filter((b) => CORE.has(b.kind)).map((b) => b.kind);
-  const expected = SEQUENCE.filter((k) => coreOrder.includes(k));
-  for (let i = 0; i < Math.min(coreOrder.length, expected.length); i++) {
-    if (coreOrder[i] !== expected[i]) {
+  let peakKind: BlockKind | null = null;
+  for (const kind of coreOrder) {
+    if (peakKind !== null && STAGE[kind] < STAGE[peakKind]) {
       problems.push(
-        `Urutan blok salah: "${BLOCK_LABELS[coreOrder[i]]}" tidak boleh sebelum "${BLOCK_LABELS[expected[i]]}".`,
+        `Urutan blok salah: "${BLOCK_LABELS[kind]}" tidak boleh sebelum "${BLOCK_LABELS[peakKind]}".`,
       );
       break;
     }
+    if (peakKind === null || STAGE[kind] > STAGE[peakKind]) peakKind = kind;
   }
 
   for (const page of def.pages) {

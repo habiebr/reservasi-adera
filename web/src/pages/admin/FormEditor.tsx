@@ -31,6 +31,7 @@ import {
 import {
   BLOCK_LABELS,
   isCoreKind,
+  isDateFirst,
   newBlock,
   validateDefinition,
   type BlockKind,
@@ -44,7 +45,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import WizardRenderer from "@/components/wizard/WizardRenderer";
 import BlockConfigPanel from "./BlockConfigPanel";
@@ -103,7 +104,15 @@ export default function FormEditor() {
           dirty.current = false;
         } catch (e) {
           setSaveState("error");
-          setServerProblems([e instanceof Error ? e.message : "Gagal menyimpan."]);
+          // A published form rejected for being invalid answers with the offending list —
+          // show that, not just "gagal", so the admin can see what to put back.
+          const detail = e instanceof ApiError && Array.isArray(e.body.problems)
+            ? (e.body.problems as string[])
+            : [];
+          setServerProblems([
+            e instanceof Error ? e.message : "Gagal menyimpan.",
+            ...detail,
+          ]);
         }
       }, 700);
     },
@@ -438,6 +447,7 @@ export default function FormEditor() {
               ? (
                 <BlockConfigPanel
                   block={selected}
+                  dateFirst={isDateFirst(def)}
                   onChange={(patch) =>
                     patchDef((d) => ({
                       ...d,

@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { ArrowLeft, ArrowRight, Info } from "lucide-react";
-import type { FormBlock, FormBranding, FormDefinition, FormPage } from "@shared/formTypes";
+import type { BlockConfig, FormBlock, FormBranding, FormDefinition, FormPage } from "@shared/formTypes";
+import { isDateFirst } from "@shared/formTypes";
 import { Button } from "@/components/ui/button";
 import { apiPost, ApiError } from "@/lib/api";
 import ProgressBar from "./ProgressBar";
@@ -42,21 +43,27 @@ function carriedRows(
   pages: FormPage[],
   step: number,
   data: WizardData,
+  dateFirst: boolean,
 ): { label: string; value: string }[] {
   const kinds = new Set(pages.slice(0, step).flatMap((p) => p.blocks.map((b) => b.kind)));
   const rows: { label: string; value: string }[] = [];
   if (kinds.has("poli_picker") && data.specializationName) {
     rows.push({ label: "Poli", value: data.specializationName });
   }
-  if (kinds.has("doctor_picker") && data.doctorName) {
-    rows.push({ label: "Dokter", value: data.doctorName });
-  }
+  const doctorRow = kinds.has("doctor_picker") && data.doctorName
+    ? { label: "Dokter", value: data.doctorName }
+    : null;
+  let scheduleRow: { label: string; value: string } | null = null;
   if (kinds.has("schedule_picker") && data.visitDate) {
     const tanggal = format(new Date(`${data.visitDate}T12:00:00`), "EEE, d MMM yyyy", {
       locale: localeId,
     });
     const jam = data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel}` : "");
-    rows.push({ label: "Jadwal", value: jam ? `${tanggal} • ${jam}` : tanggal });
+    scheduleRow = { label: "Jadwal", value: jam ? `${tanggal} • ${jam}` : tanggal };
+  }
+  // Recap the two in the order the patient actually met them.
+  for (const row of dateFirst ? [scheduleRow, doctorRow] : [doctorRow, scheduleRow]) {
+    if (row) rows.push(row);
   }
   if (kinds.has("patient_lookup") || kinds.has("patient_data")) {
     const nama = data.found ? data.maskedName : data.patient.nama_lengkap;
@@ -186,10 +193,18 @@ export default function WizardRenderer({
   );
 
   const pages = useMemo(() => visiblePages(definition, data), [definition, data]);
+  // Which way round the form asks for dokter and jadwal — see isDateFirst().
+  const dateFirst = useMemo(() => isDateFirst(definition), [definition]);
+  const scheduleConfig = useMemo<BlockConfig>(
+    () =>
+      definition.pages.flatMap((p) => p.blocks).find((b) => b.kind === "schedule_picker")?.config ??
+        {},
+    [definition],
+  );
   const clampedStep = Math.min(step, Math.max(0, pages.length - 1));
   const page = pages[clampedStep];
   const isLast = clampedStep === pages.length - 1;
-  const hint = page ? nextHint(page, data) : "Halaman belum siap";
+  const hint = page ? nextHint(page, data, dateFirst) : "Halaman belum siap";
   const canNext = hint === null;
 
   // A new patient is created on the way out of the data page rather than by a "Simpan"
@@ -256,7 +271,8 @@ export default function WizardRenderer({
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.body.code === "SLOT_TAKEN") {
         update({ slotTime: undefined, scheduleId: undefined });
-        const schedIdx = pages.findIndex((p) => p.blocks.some((b) => b.kind === "schedule_picker"));
+        const slotKind = dateFirst ? "doctor_picker" : "schedule_picker";
+        const schedIdx = pages.findIndex((p) => p.blocks.some((b) => b.kind === slotKind));
         if (schedIdx >= 0) setStep(schedIdx);
         setSubmitError("Slot baru saja terisi — silakan pilih jam lain.");
       } else {
@@ -281,7 +297,7 @@ export default function WizardRenderer({
       />
       {/* the final page renders the full summary block — no need for the strip there */}
       {!page.blocks.some((b) => b.kind === "summary_consent") && (
-        <CarriedSummary rows={carriedRows(pages, clampedStep, data)} />
+        <CarriedSummary rows={carriedRows(pages, clampedStep, data, dateFirst)} />
       )}
       <div className="mt-8 space-y-6">
         {page.title && (
@@ -298,7 +314,14 @@ export default function WizardRenderer({
               {block.title && (
                 <h3 className="mb-3 text-sm font-semibold text-foreground">{block.title}</h3>
               )}
-              <Cmp slug={slug} block={block} data={data} update={update} />
+              <Cmp
+                slug={slug}
+                block={block}
+                data={data}
+                update={update}
+                dateFirst={dateFirst}
+                scheduleConfig={scheduleConfig}
+              />
             </div>
           );
         })}

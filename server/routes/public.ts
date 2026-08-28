@@ -13,6 +13,7 @@ import {
   loadCalqCreds,
   procedurePrice,
 } from "../calq.ts";
+import { isDoctorOpenOnDate } from "@shared/availability.ts";
 import { assembleDefinition, bookingConfigForForm } from "../formStore.ts";
 import { listBundles, priceBundles } from "../bundles.ts";
 
@@ -92,35 +93,160 @@ publicRoutes.get("/calq/doctors", async (c) => {
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
   const specializationId = Number(c.req.query("specializationId"));
   if (!specializationId) return c.json({ error: "specializationId wajib" }, 400);
+  const date = c.req.query("date") ?? "";
+  const forDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";
   const creds = await loadCalqCreds();
   if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
 
   // Photos come from a second endpoint; a failure there must cost the avatars, not the list.
-  const [doctors, photos] = await Promise.all([
+  // The dated call is a *different view* of the same endpoint: Calq narrows `schedules` to
+  // the date's weekday and fills `timeSlots` with that day's availability. It is never
+  // cached — it goes stale the moment somebody books. The undated roster stays cached and
+  // supplies the weekly practice days the dated view no longer carries.
+  const [doctors, photos, dated] = await Promise.all([
     cached(`doctors:${specializationId}`, () => getDoctorSchedules(creds, specializationId)),
     cached(
       `photos:${specializationId}`,
       () => getMedicalPersonnelPhotos(creds, specializationId),
     ).catch(() => ({} as Record<number, string>)),
+    forDate ? getDoctorSchedules(creds, specializationId, forDate) : Promise.resolve(null),
   ]);
+
+  // Subtract this app's own live holds, exactly as /calq/slots does, so a doctor whose last
+  // slot is sitting in someone else's checkout does not look free.
+  const dayOf = new Map((dated ?? []).map((d) => [d.id, d]));
+  const heldSlotIds = [
+    ...new Set((dated ?? []).flatMap((d) => (d.timeSlots ?? []).map((s) => s.scheduleId))),
+  ];
+  const held = !forDate || heldSlotIds.length === 0 ? [] : await sql`
+    SELECT calq_schedule_id, slot_time FROM bookings
+    WHERE calq_schedule_id IN ${sql(heldSlotIds)} AND visit_date = ${forDate}
+      AND status IN ('PENDING','CONFIRMED') AND slot_time IS NOT NULL`;
+  const heldKeys = new Set(held.map((r) => `${r.calq_schedule_id}|${r.slot_time}`));
+
   return c.json({
     doctors: doctors
       .filter((d) => d.schedules.length > 0)
-      .map((d) => ({
-        id: d.id,
-        name: [d.title, d.firstName, d.lastName].filter(Boolean).join(" ").trim(),
-        photoUrl: photos[d.id] ?? null,
-        sessionDuration: d.sessionDuration,
-        bookingOrderType: d.bookingOrderType,
-        practiceDays: [...new Set(d.schedules.map((s) => s.dayOfWeek))].sort(),
-        schedules: d.schedules.map((s) => ({
-          id: s.id,
-          dayOfWeek: s.dayOfWeek,
-          startTime: s.startTime,
-          endTime: s.endTime,
-        })),
-      })),
+      .map((d) => {
+        const base = {
+          id: d.id,
+          name: [d.title, d.firstName, d.lastName].filter(Boolean).join(" ").trim(),
+          photoUrl: photos[d.id] ?? null,
+          sessionDuration: d.sessionDuration,
+          bookingOrderType: d.bookingOrderType,
+          practiceDays: [...new Set(d.schedules.map((s) => s.dayOfWeek))].sort(),
+          schedules: d.schedules.map((s) => ({
+            id: s.id,
+            dayOfWeek: s.dayOfWeek,
+            startTime: s.startTime,
+            endTime: s.endTime,
+          })),
+        };
+        if (!forDate) return base;
+        const day = dayOf.get(d.id);
+        const sessions = day?.schedules ?? [];
+        const slots = day?.timeSlots ?? [];
+        const open = slots.filter(
+          (s) => s.status === "available" && !heldKeys.has(`${s.scheduleId}|${s.startTime}`),
+        );
+        const exact = d.bookingOrderType === "EXACT_TIME";
+        return {
+          ...base,
+          practicesOnDate: sessions.length > 0 || slots.length > 0,
+          slotsLeft: exact ? open.length : null,
+          available: isDoctorOpenOnDate(
+            { bookingOrderType: d.bookingOrderType, schedules: sessions, timeSlots: slots },
+            (id, start) => heldKeys.has(`${id}|${start}`),
+          ),
+        };
+      }),
   });
+});
+
+/**
+ * Which dates in a window can actually be booked. The calendar needs this to grey out a day
+ * whose sessions are all taken, not merely a day nobody practises — Calq answers per date, so
+ * this fans out one dated call per candidate day.
+ *
+ * Two things keep that affordable: days whose weekday nobody in the poli practises are ruled
+ * out from the (cached) weekly roster without asking Calq at all, and the remaining calls run
+ * a few at a time against a short per-date cache. The wizard treats the result as an
+ * enhancement — the calendar renders from the weekly roster first and tightens when this
+ * lands — so a slow or failed answer costs accuracy, never a usable page.
+ */
+publicRoutes.get("/calq/days", async (c) => {
+  const form = await formBySlug(c.req.query("slug") ?? "");
+  if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
+  const specializationId = Number(c.req.query("specializationId"));
+  const from = c.req.query("from") ?? "";
+  const days = Math.min(Math.max(Number(c.req.query("days")) || 30, 1), 62);
+  const doctorId = Number(c.req.query("doctorId")) || null;
+  if (!specializationId || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    return c.json({ error: "specializationId dan from wajib" }, 400);
+  }
+  const creds = await loadCalqCreds();
+  if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
+
+  const roster = await cached(
+    `doctors:${specializationId}`,
+    () => getDoctorSchedules(creds, specializationId),
+  );
+  const relevant = doctorId ? roster.filter((d) => d.id === doctorId) : roster;
+  const practiceDays = new Set(relevant.flatMap((d) => d.schedules.map((s) => s.dayOfWeek)));
+
+  const dates: string[] = [];
+  const start = new Date(`${from}T12:00:00Z`);
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start.getTime() + i * 86_400_000);
+    if (practiceDays.has(d.getUTCDay())) dates.push(d.toISOString().slice(0, 10));
+  }
+  if (dates.length === 0) return c.json({ days: {} });
+
+  // One sweep for every hold in the window beats a query per date.
+  const last = dates[dates.length - 1];
+  const held = await sql`
+    SELECT visit_date, calq_schedule_id, slot_time FROM bookings
+    WHERE visit_date BETWEEN ${dates[0]} AND ${last}
+      AND status IN ('PENDING','CONFIRMED') AND slot_time IS NOT NULL`;
+  const heldKeys = new Set(
+    held.map((r) =>
+      `${String(r.visit_date).slice(0, 10)}|${r.calq_schedule_id}|${r.slot_time}`
+    ),
+  );
+
+  const openOn = async (date: string) => {
+    const doctors = await cached(
+      `day:${specializationId}:${date}`,
+      () => getDoctorSchedules(creds, specializationId, date),
+    );
+    const mine = doctorId ? doctors.filter((d) => d.id === doctorId) : doctors;
+    let free = 0;
+    for (const d of mine) {
+      const open = isDoctorOpenOnDate(
+        d,
+        (id, start) => heldKeys.has(`${date}|${id}|${start}`),
+      );
+      if (open) free++;
+    }
+    return free;
+  };
+
+  // A handful at a time: enough to keep the calendar snappy, gentle on Calq.
+  const out: Record<string, { available: boolean; doctors: number }> = {};
+  const queue = [...dates];
+  await Promise.all(
+    Array.from({ length: Math.min(6, queue.length) }, async () => {
+      for (let date = queue.shift(); date; date = queue.shift()) {
+        try {
+          const free = await openOn(date);
+          out[date] = { available: free > 0, doctors: free };
+        } catch {
+          // One bad date must not blank the calendar: leave it unmarked, weekly roster wins.
+        }
+      }
+    }),
+  );
+  return c.json({ days: out });
 });
 
 publicRoutes.get("/calq/slots", async (c) => {
