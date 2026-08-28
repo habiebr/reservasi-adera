@@ -2,7 +2,8 @@
 
 Form builder + reservasi kunjungan pasien Klinik Adera, terhubung langsung ke **Calq EMR**
 (poli → dokter → jadwal → cek NIK/No. RM → data pasien → tindakan + Lunas/DP → bayar DOKU →
-invoice + email). Admin menyusun beberapa form publik dengan **drag-and-drop blok per halaman**;
+invoice + email). Dokter dan jadwal boleh ditukar urutannya per form: ada poli yang dicari
+pasien lewat tanggal, ada yang lewat nama dokter. Admin menyusun beberapa form publik dengan **drag-and-drop blok per halaman**;
 tiap form terbit di URL sendiri (`/{slug}`).
 
 Aplikasi ini berdiri sendiri — terpisah dari repo vaksinadera. Satu server Deno (Hono) melayani
@@ -24,6 +25,8 @@ db/       Migrasi SQL polos, dijalankan server/migrate.ts (tabel schema_migratio
   `booking_emr` (state tulis-balik Calq) · `booking_answers` · `booking_failures`.
 - **Jadwal & dokter dikelola di Calq** — aplikasi ini hanya membaca
   (`/medical-personnels/schedules?date=` adalah sumber slot yang benar; lihat docs/ARCHITECTURE.md).
+  Ketersediaan per tanggal — siapa yang praktik, siapa yang penuh — selalu ditanyakan ke Calq,
+  tidak pernah disimpulkan dari hari praktik mingguan.
 - **Pembayaran**: checkout DOKU milik sendiri (HMAC), webhook `/api/webhooks/doku`. Setelah
   PAID: buat appointment Calq (dapat kode booking + nomor antrean) → buat sale → POST payment
   (`DOWN_PAYMENT`/`REGULAR`) → email invoice. Idempoten per langkah (kolom latch di `booking_emr`).

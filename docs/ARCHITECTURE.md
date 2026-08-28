@@ -15,6 +15,11 @@
    `status: "available"` / terisi (+ `bookingCode`) dan `scheduleId` per slot.
    ⚠️ `GET /appointments/available-time-slots` TIDAK dapat diandalkan: untuk dokter
    EXACT_TIME pun ia menjawab `bookingOrderType: "QUEUE"` dengan `timeSlots: []`.
+   ⚠️ `?date=` mengubah bentuk jawaban: **`schedules[]` menyempit ke hari dari tanggal itu
+   saja**, dan `timeSlots[]` baru terisi. Tanpa `date=`, `schedules[]` memuat sepekan penuh
+   tapi `timeSlots[]` kosong. Karena itu hari praktik mingguan (chip di kartu dokter,
+   kalender) diambil dari panggilan tanpa tanggal yang di-cache, sedangkan ketersediaan
+   selalu dari panggilan bertanggal yang tidak pernah di-cache lama.
 4. **`POST /appointments`** (bentuk asli, dari error validasi zod — DTO di swagger adalah DTO
    BPJS, abaikan): `{type:'OFFLINE'|'ONLINE', date, scheduleId (id jadwal dokter),
    specializationId, patientId (harus sudah ada — FK procedure_result), procedureId
