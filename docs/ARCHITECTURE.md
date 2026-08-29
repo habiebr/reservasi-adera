@@ -8,8 +8,29 @@
 1. **Calq punya sistem appointment rawat jalan penuh** yang tidak dipakai vaksinadera:
    `/polyclinic`, `/specializations`, `/medical-personnels(/schedules)`, `/appointments`,
    `/procedure`, `/payment-methods`, dst.
-2. **`bookingOrderType`**: `QUEUE` (161 spesialisasi — pasien dapat nomor antrean) vs
-   `EXACT_TIME` (mis. Gigi, Vaksinasi — slot per `sessionDuration` menit).
+2. **`bookingOrderType`**: `QUEUE` (159 spesialisasi — pasien dapat nomor antrean) vs
+   `EXACT_TIME` (2 saja di sandbox: Gigi #61, Vaksin #163 — slot per `sessionDuration` menit,
+   30 mnt untuk Gigi, 15 mnt untuk Vaksin). Keduanya dilayani endpoint yang sama; yang
+   membedakan hanya isi jawabannya:
+
+   | | QUEUE | EXACT_TIME |
+   |---|---|---|
+   | `timeSlots[]` bertanggal | **selalu kosong** | terisi, teriris `sessionDuration` |
+   | Yang dipilih pasien | sesi praktik (`scheduleId`) | satu jam (`scheduleId` + `startTime`) |
+   | Batas kapasitas | **tak ada di API** — tak ada field kuota di mana pun | jumlah slot itu sendiri |
+   | Arti "penuh" | tidak ada; hanya "praktik / tidak" | semua slot `status: "booked"` |
+   | Nomor antrean | `queue.bookedNumber` terbit saat `POST /appointments` | — |
+
+   `schedules[]` tak punya field kuota sama sekali (hanya id, medicalPersonnelId, dayOfWeek,
+   startTime, endTime, timeZone, roomId, branchId) — jadi untuk poli antrean, "ketersediaan"
+   memang cuma bisa berarti *dokternya praktik dan sesinya belum tutup*.
+   `status` slot diverifikasi 60 hari: hanya `"available"` dan `"booked"` (yang booked
+   membawa `bookingCode`).
+   ⚠️ Satu dokter bisa punya **jadwal bertumpuk di hari yang sama** (dokter Vaksin sandbox:
+   08:00–20:00 *dan* 00:00–23:59), dan jam yang bertumpuk dipancarkan sekali per jadwal —
+   144 slot untuk 96 jam. Lihat `dedupeSlotsByTime` di shared/availability.ts.
+   ⚠️ Calq melaporkan **jadwal, bukan jam dinding**: pukul 16.00 pun slot 00:00 hari itu
+   masih dijawab `"available"`. Penyaringan jam lewat ada di pihak kita (`isPast`).
 3. **Sumber slot yang benar = `GET /medical-personnels/schedules?specializationId=&date=`** —
    mengembalikan dokter + `schedules[]` (dayOfWeek/jam) + `timeSlots[]` per slot dengan
    `status: "available"` / terisi (+ `bookingCode`) dan `scheduleId` per slot.
@@ -28,37 +49,42 @@
 5. **Appointment yang dibuat via API TIDAK otomatis membuat sale/invoice pra-kunjungan.**
    Sale yang terlihat menempel di appointment lama dibuat saat konsultasi/checkout oleh alur
    klinik. Maka aplikasi ini **membuat sale sendiri** (`POST /sales`) setelah pembayaran.
-6. **`GET /sales?patientId=` DIABAIKAN Calq** (mengembalikan semua pasien). Pencarian yang
+6. ⚠️ **`GET /appointments?date=` juga DIABAIKAN** — tanggal apa pun mengembalikan 10 baris
+   yang sama persis. Sekelas dengan bug `?search`/`?patientId` di bawah: jangan pernah
+   percaya filter query Calq tanpa membuktikannya dulu. (Bentuk barisnya sendiri berguna:
+   membawa `bookingCode`, `paymentStatus`, dan `queue: {bookedNumber, status}` dengan status
+   `BOOKED` / `CHECKED_IN`.)
+7. **`GET /sales?patientId=` DIABAIKAN Calq** (mengembalikan semua pasien). Pencarian yang
    bekerja: `GET /sales?search=<MRN atau no. invoice>` — sama seperti praktik vaksinadera.
-7. **`POST /sales` butuh `roomId` untuk item PROCEDURE** ("Ruangan dibutuhkan…"). Appointment
+8. **`POST /sales` butuh `roomId` untuk item PROCEDURE** ("Ruangan dibutuhkan…"). Appointment
    buatan API biasanya belum punya room → fallback `CALQ_DEFAULT_ROOM_ID` /
    `app_settings.calq_default_room_id` (sandbox: `4` = ruangan "02").
-8. **`POST /patients`** langsung memberi `id` + `medicalRecordNumber` (mis. `SBA002418`) —
+9. **`POST /patients`** langsung memberi `id` + `medicalRecordNumber` (mis. `SBA002418`) —
    pasien baru bisa langsung dipakai untuk appointment.
-9. `POST /sales/{id}/payments {methodId, amount, type: 'DOWN_PAYMENT'|'REGULAR', note}` —
+10. `POST /sales/{id}/payments {methodId, amount, type: 'DOWN_PAYMENT'|'REGULAR', note}` —
    DP didukung native. Metode: sandbox Doku id `14`, produksi `3` (`CALQ_PAYMENT_METHOD_ID_*`).
-10. Aturan warisan vaksinadera yang tetap dipegang: **item sebelum pembayaran** (membayar
+11. Aturan warisan vaksinadera yang tetap dipegang: **item sebelum pembayaran** (membayar
     invoice kosong membuat Calq menandai invoice Rp0 PAID), dan **sale berstatus PAID tidak
     boleh di-PATCH/dibayar lagi** (isFullyPaid guard).
-11. `dayOfWeek` Calq = `Date.getDay()` JS (Minggu = 0).
+12. `dayOfWeek` Calq = `Date.getDay()` JS (Minggu = 0).
 
 ## Urutan tulis-balik setelah DOKU PAID (`server/emrSync.ts`)
 
 Setiap langkah latch ke kolom `booking_emr` — retry (webhook ulang / tombol admin) melanjutkan
 dari titik gagal, tidak pernah menggandakan:
 
-1. Pastikan payment PAID + booking CONFIRMED. `sync_status='REGISTERED'` → selesai.
-2. Pasien: `calq_patient_id` harus ada (dibuat saat wizard; retry di sini bila kosong).
-3. **Appointment** (latch `appointment_id`): `POST /appointments` → simpan
+2. Pastikan payment PAID + booking CONFIRMED. `sync_status='REGISTERED'` → selesai.
+3. Pasien: `calq_patient_id` harus ada (dibuat saat wizard; retry di sini bila kosong).
+4. **Appointment** (latch `appointment_id`): `POST /appointments` → simpan
    `booking_code`, `queue_number`. Gagal → `sync_status='FAILED'` + pesan Calq utuh
    (uang aman di DOKU; pemulihan: ubah jadwal di Calq lalu "Ulangi EMR").
    Appointment tidak pernah dihapus (punya procedure_result).
-4. **Sale** (latch `sale_id`): probe idempoten `GET /sales?search={MRN}` (item PROCEDURE sama,
+5. **Sale** (latch `sale_id`): probe idempoten `GET /sales?search={MRN}` (item PROCEDURE sama,
    belum PAID) → kalau tidak ada, `POST /sales` (roomId lihat temuan #7,
    notes = no. invoice RSV + kode booking).
-5. **Payment** (latch `payment_posted_at`): re-GET sale → guard isFullyPaid + item-tidak-kosong
+6. **Payment** (latch `payment_posted_at`): re-GET sale → guard isFullyPaid + item-tidak-kosong
    → `POST /sales/{id}/payments` `type` sesuai LUNAS/DP.
-6. `REGISTERED`; email invoice best-effort (`email_log` = latch kirim).
+7. `REGISTERED`; email invoice best-effort (`email_log` = latch kirim).
 
 ## Slot hold & kedaluwarsa
 
