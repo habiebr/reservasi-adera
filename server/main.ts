@@ -7,6 +7,33 @@ import { adminRoutes } from "./routes/admin.ts";
 
 const app = new Hono();
 
+/**
+ * Who may put this app inside an iframe. The wizard asks for a NIK, so leaving that open to
+ * any site invites a clickjacked page collecting identities under someone else's branding.
+ *
+ * `EMBED_ORIGINS` is a comma-separated allow-list (the app's own origin is always allowed).
+ * Left unset, no header goes out and framing stays open — an existing deploy that quietly
+ * relied on it keeps working instead of breaking on upgrade.
+ */
+const embedOrigins = (Deno.env.get("EMBED_ORIGINS") ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+const frameAncestors = embedOrigins.length > 0
+  ? `frame-ancestors 'self' ${embedOrigins.join(" ")}`
+  : null;
+
+if (frameAncestors) {
+  app.use("*", async (c, next) => {
+    await next();
+    // Only pages can be framed; skipping the API keeps the header off JSON responses.
+    if ((c.res.headers.get("content-type") ?? "").includes("text/html")) {
+      c.res.headers.set("Content-Security-Policy", frameAncestors);
+    }
+  });
+  console.log(`embed allowed from: ${embedOrigins.join(", ")}`);
+}
+
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api", publicRoutes);
 app.route("/api/booking", bookingRoutes);
