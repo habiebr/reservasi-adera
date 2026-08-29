@@ -13,7 +13,12 @@ import {
   loadCalqCreds,
   procedurePrice,
 } from "../calq.ts";
-import { isDoctorOpenOnDate } from "@shared/availability.ts";
+import {
+  clinicNow,
+  dedupeSlotsByTime,
+  isDoctorOpenOnDate,
+  isPast,
+} from "@shared/availability.ts";
 import { assembleDefinition, bookingConfigForForm } from "../formStore.ts";
 import { listBundles, priceBundles } from "../bundles.ts";
 
@@ -145,9 +150,11 @@ publicRoutes.get("/calq/doctors", async (c) => {
         if (!forDate) return base;
         const day = dayOf.get(d.id);
         const sessions = day?.schedules ?? [];
-        const slots = day?.timeSlots ?? [];
+        const slots = dedupeSlotsByTime(day?.timeSlots ?? []);
         const open = slots.filter(
-          (s) => s.status === "available" && !heldKeys.has(`${s.scheduleId}|${s.startTime}`),
+          (s) =>
+            s.status === "available" && !heldKeys.has(`${s.scheduleId}|${s.startTime}`) &&
+            !isPast(forDate, s.startTime),
         );
         const exact = d.bookingOrderType === "EXACT_TIME";
         return {
@@ -157,6 +164,7 @@ publicRoutes.get("/calq/doctors", async (c) => {
           available: isDoctorOpenOnDate(
             { bookingOrderType: d.bookingOrderType, schedules: sessions, timeSlots: slots },
             (id, start) => heldKeys.has(`${id}|${start}`),
+            forDate,
           ),
         };
       }),
@@ -225,6 +233,7 @@ publicRoutes.get("/calq/days", async (c) => {
       const open = isDoctorOpenOnDate(
         d,
         (id, start) => heldKeys.has(`${date}|${id}|${start}`),
+        date,
       );
       if (open) free++;
     }
@@ -265,8 +274,10 @@ publicRoutes.get("/calq/slots", async (c) => {
   if (!day) return c.json({ error: "Dokter tidak ditemukan" }, 404);
 
   // Subtract this app's own live holds (pending checkouts + paid-but-not-yet-synced).
+  const now = clinicNow();
+  const timeSlots = dedupeSlotsByTime(day.timeSlots);
   const scheduleIds = [
-    ...new Set([...day.sessions.map((s) => s.id), ...day.timeSlots.map((s) => s.scheduleId)]),
+    ...new Set([...day.sessions.map((s) => s.id), ...timeSlots.map((s) => s.scheduleId)]),
   ];
   const held = scheduleIds.length === 0 ? [] : await sql`
     SELECT calq_schedule_id, slot_time FROM bookings
@@ -278,17 +289,21 @@ publicRoutes.get("/calq/slots", async (c) => {
     bookingOrderType: day.bookingOrderType,
     sessionDuration: day.sessionDuration,
     doctorName: day.doctorName,
-    timeSlots: day.timeSlots.map((s) => ({
+    timeSlots: timeSlots.map((s) => ({
       startTime: s.startTime,
       endTime: s.endTime,
       scheduleId: s.scheduleId,
-      available: s.status === "available" && !heldKeys.has(`${s.scheduleId}|${s.startTime}`),
+      available: s.status === "available" &&
+        !heldKeys.has(`${s.scheduleId}|${s.startTime}`) &&
+        !isPast(date, s.startTime, now),
     })),
-    sessions: day.sessions.map((s) => ({
-      scheduleId: s.id,
-      startTime: s.startTime,
-      endTime: s.endTime,
-    })),
+    sessions: day.sessions
+      .filter((s) => !isPast(date, s.endTime, now))
+      .map((s) => ({
+        scheduleId: s.id,
+        startTime: s.startTime,
+        endTime: s.endTime,
+      })),
   });
 });
 
