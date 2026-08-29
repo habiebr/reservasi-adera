@@ -73,7 +73,14 @@ export interface BlockProps {
  * patient_data is skipped when the lookup already found the patient. */
 export function visiblePages(def: FormDefinition, data: WizardData): FormPage[] {
   return def.pages
-    .map((p) => ({ ...p, blocks: p.blocks.filter((b) => b.enabled) }))
+    // A single-poli form answers the poli question in its own definition, so the block never
+    // reaches the patient — WizardRenderer fills the choice in instead.
+    .map((p) => ({
+      ...p,
+      blocks: p.blocks.filter(
+        (b) => b.enabled && !(b.kind === "poli_picker" && b.config.singlePoli),
+      ),
+    }))
     .filter((p) => p.blocks.length > 0)
     .filter((p) => {
       const meaningful = p.blocks.filter((b) => b.kind !== "info_page");

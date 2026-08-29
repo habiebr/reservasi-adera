@@ -1,6 +1,12 @@
 // deno test shared/
 import { assertEquals } from "jsr:@std/assert@1";
-import { defaultDefinition, isDateFirst, newBlock, validateDefinition } from "./formTypes.ts";
+import {
+  defaultDefinition,
+  isDateFirst,
+  newBlock,
+  singlePoliOf,
+  validateDefinition,
+} from "./formTypes.ts";
 import { amountDue, dpAmount, totalAmount } from "./pricing.ts";
 import { canonPhone, isValidNik, isValidTanggalLahir, maskDob, maskName } from "./identity.ts";
 
@@ -141,4 +147,27 @@ Deno.test("isValidTanggalLahir", () => {
   assertEquals(isValidTanggalLahir("1995-05-05"), true);
   assertEquals(isValidTanggalLahir("2999-01-01"), false);
   assertEquals(isValidTanggalLahir("1995-13-05"), false);
+});
+
+Deno.test("form khusus satu poli: harus tepat satu poli", () => {
+  const def = defaultDefinition(makeId);
+  const poli = def.pages.flatMap((p) => p.blocks).find((b) => b.kind === "poli_picker")!;
+  poli.config.singlePoli = true;
+  assertEquals(validateDefinition(def).some((p) => p.includes("pilih dulu polinya")), true);
+  assertEquals(singlePoliOf(def), null);
+
+  poli.config.allowedSpecializations = [{ id: 61, name: "Gigi" }, { id: 163, name: "Vaksin" }];
+  assertEquals(validateDefinition(def).some((p) => p.includes("hanya boleh satu poli")), true);
+
+  poli.config.allowedSpecializations = [{ id: 61, name: "Gigi" }];
+  assertEquals(validateDefinition(def), []);
+  assertEquals(singlePoliOf(def)?.name, "Gigi");
+});
+
+Deno.test("tanpa saklar, allow-list satu poli tetap bukan form satu-poli", () => {
+  const def = defaultDefinition(makeId);
+  const poli = def.pages.flatMap((p) => p.blocks).find((b) => b.kind === "poli_picker")!;
+  poli.config.allowedSpecializations = [{ id: 61, name: "Gigi" }];
+  assertEquals(singlePoliOf(def), null);
+  assertEquals(validateDefinition(def), []);
 });

@@ -63,6 +63,7 @@ export async function assembleDefinition(formId: string): Promise<FormDefinition
         if (b.consent_text != null) config.consentText = b.consent_text as string;
         if (b.info_body != null) config.infoBody = b.info_body as string;
         if (b.require_ack != null) config.requireAck = Boolean(b.require_ack);
+        if (b.single_poli != null) config.singlePoli = Boolean(b.single_poli);
         if (b.kind === "poli_picker") {
           config.allowedSpecializations = specs
             .filter((s) => s.block_id === b.id)
@@ -158,6 +159,7 @@ export async function saveDefinition(formId: string, def: FormDefinition): Promi
           consent_text: c.consentText ?? null,
           info_body: c.infoBody ?? null,
           require_ack: c.requireAck ?? null,
+          single_poli: c.singlePoli ?? null,
         };
         await tx`
           INSERT INTO form_blocks ${tx({ id: blockId, ...cols })}

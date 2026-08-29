@@ -79,7 +79,34 @@ export default function BlockConfigPanel({
         />
       </div>
 
-      {block.kind === "poli_picker" && <PoliAllowList block={block} setConfig={setConfig} />}
+      {block.kind === "poli_picker" && (
+        <>
+          <label className="flex items-start gap-2.5 rounded-lg border border-border p-3">
+            <Checkbox
+              checked={c.singlePoli === true}
+              onCheckedChange={(v) =>
+                setConfig({
+                  singlePoli: v === true,
+                  // switching on with a broad allow-list would be ambiguous: keep the first
+                  allowedSpecializations: v === true
+                    ? (c.allowedSpecializations ?? []).slice(0, 1)
+                    : c.allowedSpecializations,
+                })}
+              className="mt-0.5"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">
+                Form ini khusus satu poli
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                Langkah "Pilih Poli" tidak ditampilkan ke pasien — polinya sudah ditentukan di
+                sini. Dipakai kalau form ditempel di halaman poli itu sendiri.
+              </span>
+            </span>
+          </label>
+          <PoliAllowList block={block} setConfig={setConfig} single={c.singlePoli === true} />
+        </>
+      )}
 
       {block.kind === "schedule_picker" && (
         <>
@@ -207,9 +234,12 @@ export default function BlockConfigPanel({
 function PoliAllowList({
   block,
   setConfig,
+  single,
 }: {
   block: FormBlock;
   setConfig: (p: Partial<FormBlock["config"]>) => void;
+  /** One poli only: picking replaces the choice instead of adding to a list. */
+  single: boolean;
 }) {
   const [specs, setSpecs] = useState<CalqSpec[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -222,6 +252,10 @@ function PoliAllowList({
   const allowed = block.config.allowedSpecializations ?? [];
   const toggle = (s: CalqSpec) => {
     const has = allowed.some((a) => a.id === s.id);
+    if (single) {
+      setConfig({ allowedSpecializations: has ? [] : [{ id: s.id, name: s.name }] });
+      return;
+    }
     setConfig({
       allowedSpecializations: has
         ? allowed.filter((a) => a.id !== s.id)
@@ -240,8 +274,10 @@ function PoliAllowList({
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">
-        Poli yang ditawarkan{" "}
-        <span className="font-normal text-muted-foreground">(kosong = semua)</span>
+        {single ? "Poli untuk form ini" : "Poli yang ditawarkan"}{" "}
+        <span className="font-normal text-muted-foreground">
+          {single ? "(pilih satu)" : "(kosong = semua)"}
+        </span>
       </Label>
       <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
         {(specs ?? []).map((s) => (
@@ -258,9 +294,17 @@ function PoliAllowList({
         ))}
         {!specs && <p className="p-2 text-xs text-muted-foreground">Memuat dari Calq…</p>}
       </div>
-      {allowed.length > 0 && (
-        <p className="text-[11px] text-muted-foreground">{allowed.length} poli dipilih.</p>
-      )}
+      {single
+        ? (
+          <p className="text-[11px] text-muted-foreground">
+            {allowed.length === 1
+              ? `Pasien langsung masuk ke langkah berikutnya dengan poli ${allowed[0].name}.`
+              : "Belum ada poli yang dipilih — form belum bisa diterbitkan."}
+          </p>
+        )
+        : allowed.length > 0 && (
+          <p className="text-[11px] text-muted-foreground">{allowed.length} poli dipilih.</p>
+        )}
     </div>
   );
 }

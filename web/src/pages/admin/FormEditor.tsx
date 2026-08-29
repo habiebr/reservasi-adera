@@ -22,6 +22,9 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
+  Code2,
+  Copy,
   Eye,
   GripVertical,
   Plus,
@@ -32,6 +35,7 @@ import {
   BLOCK_LABELS,
   isCoreKind,
   isDateFirst,
+  singlePoliOf,
   newBlock,
   validateDefinition,
   type BlockKind,
@@ -48,7 +52,98 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiPost, apiPut } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import WizardRenderer from "@/components/wizard/WizardRenderer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import BlockConfigPanel from "./BlockConfigPanel";
+
+/** The paste-into-your-website snippet. The iframe starts tall enough to look right before
+ * any message arrives, then follows the wizard's own reported height. */
+function embedSnippet(origin: string, slug: string) {
+  return `<div id="adera-reservasi"></div>
+<script>
+(function () {
+  var box = document.getElementById("adera-reservasi");
+  var frame = document.createElement("iframe");
+  frame.src = "${origin}/${slug}?embed=1";
+  frame.title = "Reservasi Klinik Adera";
+  frame.loading = "lazy";
+  frame.style.cssText = "width:100%;border:0;height:900px";
+  box.appendChild(frame);
+  window.addEventListener("message", function (e) {
+    if (e.source !== frame.contentWindow) return;
+    if (e.data && e.data.type === "adera-reservasi:height") {
+      frame.style.height = e.data.height + "px";
+    }
+  });
+})();
+<\/script>`;
+}
+
+function EmbedDialog({
+  slug,
+  open,
+  onOpenChange,
+  singlePoli,
+}: {
+  slug: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  singlePoli: string | null;
+}) {
+  const [copied, setCopied] = useState(false);
+  const snippet = embedSnippet(window.location.origin, slug);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch { /* clipboard blocked — the textarea below is still selectable */ }
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Sematkan di halaman situs klinik</DialogTitle>
+          <DialogDescription>
+            Tempel potongan ini di halaman mana pun. Tingginya menyesuaikan sendiri, dan saat
+            pasien menekan bayar, DOKU dibuka di tab penuh — bukan di dalam bingkai.
+          </DialogDescription>
+        </DialogHeader>
+        <p className="rounded-lg bg-info/10 p-3 text-xs leading-relaxed text-foreground">
+          {singlePoli
+            ? `Form ini khusus poli ${singlePoli}, jadi pasien langsung masuk ke langkah pertama tanpa memilih poli — pas untuk ditempel di halaman poli tersebut.`
+            : "Form ini masih menawarkan lebih dari satu poli. Kalau mau ditempel di halaman satu poli saja, nyalakan \"Form ini khusus satu poli\" di blok Pilih Poli."}
+        </p>
+        <textarea
+          readOnly
+          rows={12}
+          value={snippet}
+          onFocus={(e) => e.currentTarget.select()}
+          className="w-full rounded-lg border border-border bg-secondary/40 p-3 font-mono text-[11px] leading-relaxed text-foreground"
+        />
+        <div className="flex items-center justify-between gap-3">
+          <a
+            href={`/${slug}?embed=1`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary hover:underline"
+          >
+            Lihat versi sematan di tab baru
+          </a>
+          <Button size="sm" onClick={copy} className="gap-1.5">
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? "Tersalin" : "Salin kode"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface FormDetail {
   id: string;
@@ -70,6 +165,7 @@ export default function FormEditor() {
   const [title, setTitle] = useState("");
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showEmbed, setShowEmbed] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [serverProblems, setServerProblems] = useState<string[]>([]);
   const saveTimer = useRef<number>();
@@ -261,6 +357,9 @@ export default function FormEditor() {
           <Button variant="outline" size="sm" onClick={() => setShowPreview((v) => !v)} className="gap-1">
             <Smartphone className="h-4 w-4" /> {showPreview ? "Tutup Pratinjau" : "Pratinjau"}
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowEmbed(true)} className="gap-1">
+            <Code2 className="h-4 w-4" /> Sematkan
+          </Button>
           {form.status === "published"
             ? (
               <>
@@ -286,6 +385,13 @@ export default function FormEditor() {
           </div>
         )}
       </header>
+
+      <EmbedDialog
+        slug={form.slug}
+        open={showEmbed}
+        onOpenChange={setShowEmbed}
+        singlePoli={singlePoliOf(def)?.name ?? null}
+      />
 
       <div className="mx-auto grid max-w-[1400px] gap-4 px-4 py-4 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
         {/* Palette */}

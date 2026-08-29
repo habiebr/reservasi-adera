@@ -72,8 +72,24 @@ Deploy yang sudah punya token cukup mengisi `TUNNEL_TOKEN` — tak perlu `login`
 | URL | Untuk | Isi |
 |---|---|---|
 | `/{slug}` | Publik | Wizard reservasi hasil builder |
+| `/{slug}?embed=1` | Publik | Wizard tanpa chrome situs, untuk disematkan lewat iframe |
 | `/{slug}/status?invoice=` | Publik | Status bayar → kode booking, antrean, invoice |
 | `/admin` | Admin | Form (builder DnD), Reservasi, Dokter & Jadwal (read-only Calq), Gagal Bayar, Pengaturan |
 | `/admin/forms/:id` | Admin | Editor tiga panel: palet blok · kanvas halaman · konfigurasi + pratinjau HP |
+
+## Menyematkan form di situs klinik
+
+Sebuah form bisa dikhususkan untuk satu poli: nyalakan **"Form ini khusus satu poli"** di blok
+Pilih Poli lalu pilih polinya. Langkah "Pilih Poli" hilang dari wizard — pasien langsung masuk
+ke pertanyaan pertama yang sesungguhnya, dan polinya diisikan otomatis.
+
+Tombol **Sematkan** di editor form memberi potongan kode siap tempel. Isinya iframe ke
+`/{slug}?embed=1` plus pendengar `postMessage` agar tinggi bingkai mengikuti isi wizard
+(pesan `{type:"adera-reservasi:height", height}`). Saat pasien menekan bayar, halaman DOKU
+dibuka di tab penuh lewat `window.top` — DOKU menolak dibingkai, dan membayar di dalam strip
+milik halaman lain bukan cara yang benar menyerahkan uang.
+
+Server tidak memasang `X-Frame-Options` maupun `frame-ancestors`, jadi form bisa disematkan di
+domain mana pun. Kalau ingin dikunci ke domain klinik saja, itu satu header di `server/main.ts`.
 
 Detail teknis + temuan API Calq: **docs/ARCHITECTURE.md**.

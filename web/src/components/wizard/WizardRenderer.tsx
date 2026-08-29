@@ -6,9 +6,9 @@ import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { ArrowLeft, ArrowRight, Info } from "lucide-react";
 import type { BlockConfig, FormBlock, FormBranding, FormDefinition, FormPage } from "@shared/formTypes";
-import { isDateFirst } from "@shared/formTypes";
+import { isDateFirst, singlePoliOf } from "@shared/formTypes";
 import { Button } from "@/components/ui/button";
-import { apiPost, ApiError } from "@/lib/api";
+import { apiGet, apiPost, ApiError, type PoliOption } from "@/lib/api";
 import ProgressBar from "./ProgressBar";
 import PoliPicker from "./PoliPicker";
 import DoctorPicker from "./DoctorPicker";
@@ -141,11 +141,14 @@ export default function WizardRenderer({
   definition,
   branding,
   preview = false,
+  embedded = false,
 }: {
   slug: string;
   definition: FormDefinition;
   branding: FormBranding;
   preview?: boolean;
+  /** Rendered inside someone else's page: payment must leave the iframe, not fill it. */
+  embedded?: boolean;
 }) {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -191,6 +194,34 @@ export default function WizardRenderer({
     (patch: Partial<WizardData>) => setData((d) => ({ ...d, ...patch })),
     [],
   );
+
+  // A single-poli form never shows the picker, so the choice is resolved here instead —
+  // straight from the same cached Calq list the picker would have used.
+  const onlyPoli = useMemo(() => singlePoliOf(definition), [definition]);
+  const [poliError, setPoliError] = useState("");
+  const poliReady = !onlyPoli || Boolean(data.specializationId);
+
+  useEffect(() => {
+    if (!onlyPoli || data.specializationId) return;
+    apiGet<{ polis: PoliOption[] }>(`/api/calq/polis?slug=${slug}`)
+      .then((r) => {
+        for (const poli of r.polis) {
+          const spec = poli.specializations.find((s) => s.id === onlyPoli.id);
+          if (spec) {
+            update({
+              poliId: poli.id,
+              poliName: poli.name,
+              specializationId: spec.id,
+              specializationName: spec.name,
+              bookingOrderType: spec.bookingOrderType,
+            });
+            return;
+          }
+        }
+        setPoliError(`Poli "${onlyPoli.name}" tidak aktif di sistem klinik saat ini.`);
+      })
+      .catch((e) => setPoliError(e instanceof Error ? e.message : "Gagal memuat poli."));
+  }, [onlyPoli, data.specializationId, slug, update]);
 
   const pages = useMemo(() => visiblePages(definition, data), [definition, data]);
   // Which way round the form asks for dokter and jadwal — see isDateFirst().
@@ -267,6 +298,15 @@ export default function WizardRenderer({
         },
       );
       sessionStorage.removeItem(draftKey);
+      // DOKU refuses to be framed, and paying inside a strip of someone else's page is no
+      // way to hand over money: take the whole tab. The click is the user activation that
+      // makes a cross-origin top navigation legal; same-tab is the fallback.
+      if (embedded && window.top && window.top !== window.self) {
+        try {
+          window.top.location.href = r.payment_url;
+          return;
+        } catch { /* framed by a stricter parent — fall through */ }
+      }
       window.location.href = r.payment_url;
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.body.code === "SLOT_TAKEN") {
@@ -283,6 +323,12 @@ export default function WizardRenderer({
     }
   };
 
+  if (poliError) {
+    return <p className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">{poliError}</p>;
+  }
+  if (!poliReady) {
+    return <p className="p-6 text-sm text-muted-foreground">Menyiapkan formulir…</p>;
+  }
   if (!page) {
     return <p className="p-6 text-sm text-muted-foreground">Form ini belum punya halaman.</p>;
   }

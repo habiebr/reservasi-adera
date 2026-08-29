@@ -98,6 +98,9 @@ export interface BlockConfig {
   dpValue?: number;
   // poli_picker / pricing_payment allow-lists (empty = everything active in Calq)
   allowedSpecializations?: AllowedRef[];
+  /** poli_picker: this form serves exactly one poli — the step is dropped from the wizard and
+   * the poli is filled in for the patient. Requires exactly one entry in the allow-list. */
+  singlePoli?: boolean;
   allowedProcedures?: AllowedRef[];
   // pricing_payment, pricingMode "package": which bundles to offer (empty = all active)
   allowedBundles?: AllowedBundleRef[];
@@ -141,6 +144,22 @@ const CORE: Set<BlockKind> = new Set(SEQUENCE);
 
 export function isCoreKind(kind: BlockKind): boolean {
   return CORE.has(kind);
+}
+
+/**
+ * The single poli a form is dedicated to, or null when the patient still has to choose.
+ * Built for embedding a form in one poli's own page: the wizard skips straight to the first
+ * real question instead of showing a one-card list.
+ */
+export function singlePoliOf(def: FormDefinition): AllowedRef | null {
+  for (const page of def.pages) {
+    for (const b of page.blocks) {
+      if (b.kind !== "poli_picker" || !b.config.singlePoli) continue;
+      const only = b.config.allowedSpecializations ?? [];
+      return only.length === 1 ? only[0] : null;
+    }
+  }
+  return null;
 }
 
 /**
@@ -209,6 +228,16 @@ export function validateDefinition(def: FormDefinition): string[] {
           !(Number(c.dpValue) > 0 && Number(c.dpValue) < 100)
         ) {
           problems.push("DP persen harus antara 1–99.");
+        }
+      }
+      if (block.kind === "poli_picker" && block.config.singlePoli) {
+        const only = block.config.allowedSpecializations ?? [];
+        if (only.length !== 1) {
+          problems.push(
+            only.length === 0
+              ? "Form khusus satu poli: pilih dulu polinya."
+              : "Form khusus satu poli: hanya boleh satu poli yang dipilih.",
+          );
         }
       }
       if (block.kind === "patient_data") {
