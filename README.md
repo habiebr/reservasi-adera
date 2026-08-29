@@ -67,6 +67,29 @@ Deploy yang sudah punya token cukup mengisi `TUNNEL_TOKEN` — tak perlu `login`
 `APP_URL` di `.env` harus sama dengan hostname tunnel — dipakai untuk link invoice dan
 `notification_url` DOKU. Webhook DOKU dikirim per-order — tidak perlu mengubah dashboard DOKU.
 
+### Pindah ke reservasi.klinikadera.co.id
+
+Ingress untuk hostname itu **sudah ada** di `cloudflared/config.yml`; yang belum hanya DNS-nya.
+Zona `klinikadera.co.id` harus berada di akun Cloudflare yang sama dengan tunnel ini.
+
+```bash
+cloudflared tunnel route dns reservasi-adera reservasi.klinikadera.co.id
+# lalu, di mesin deploy:
+#   ubah APP_URL di .env → https://reservasi.klinikadera.co.id
+docker compose up -d cloudflared app
+```
+
+Urutannya penting: `APP_URL` baru boleh diganti **setelah** hostname-nya benar-benar melayani,
+karena ia langsung dipakai sebagai `notification_url` DOKU pada checkout berikutnya.
+
+Hostname lama `reservasi-adera.habiebraharjo.xyz` sengaja **dibiarkan hidup**, bukan diganti:
+checkout yang belum lunas membawa `notification_url` lama, dan invoice yang sudah terkirim
+membawa tautan absolut lama. Mematikannya akan menggantung pembayaran yang sedang berjalan.
+
+Setelah pindah, alamatnya: pasien di `reservasi.klinikadera.co.id/{slug}`, admin di
+`reservasi.klinikadera.co.id/admin`. Admin yang sedang login di hostname lama perlu login
+ulang — cookie sesi terikat pada host.
+
 ## Halaman
 
 | URL | Untuk | Isi |

@@ -1,6 +1,14 @@
 # Ingress only — no secrets in this file, so it is safe to commit.
 # Tunnel identity + credentials come from TUNNEL_TOKEN (see .env).
+#
+# Two hostnames on purpose. reservasi.klinikadera.co.id is the address patients and admins
+# are meant to use; the habiebraharjo.xyz one stays because links already in the wild point
+# at it — DOKU carries a per-order notification_url, and invoice emails already sent carry
+# an absolute link, so retiring it would strand payments mid-flight and break old invoices.
+# Both serve the same app: patients at /{slug}, admin at /admin.
 ingress:
+  - hostname: reservasi.klinikadera.co.id
+    service: http://app:8300
   - hostname: reservasi-adera.habiebraharjo.xyz
     service: http://app:8300
   - service: http_status:404
