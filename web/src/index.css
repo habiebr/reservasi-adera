@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -25,10 +25,19 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    /* Primary — Klinik Adera #0033FF mapped to navy-adjacent */
-    --primary: 231 100% 50%;
+    /* Primary — Klinik Adera "Primary/ Base" #003DD8 (Figma: Klinik Adera / UI FIX) */
+    --primary: 223 100% 42%;
     --primary-foreground: 0 0% 100%;
     --primary-muted: 228 100% 94%;
+
+    /* Klinik Adera brand scale, straight from the Figma design-system styles.
+       These sit alongside the semantic tokens rather than replacing them: --secondary
+       stays the light slate that surfaces already use. */
+    --brand-navy: 223 100% 21%;   /* Primary/ 90  #001E6C — footer ground */
+    --brand-sky: 221 100% 62%;    /* Secondary/ Base #3F7BFF — active nav pill */
+    --brand-gold: 41 100% 50%;    /* Tertiary/ Base #FFAE00 — banner badge */
+    --brand-ink: 0 0% 10%;        /* Neutral Black/ Base #1A1A1A */
+    --brand-ink-50: 0 0% 25%;     /* Neutral Black/ 50 #404040 — nav links */
 
     /* Secondary slate */
     --secondary: 215 20% 95%;
@@ -57,19 +66,19 @@
 
     --border: 214 32% 91%;            /* #E2E8F0 */
     --input: 214 32% 91%;
-    --ring: 231 100% 50%;
+    --ring: 223 100% 42%;
 
     /* Verdana Health radius — 8px default */
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 231 100% 50%;
+    --sidebar-primary: 223 100% 42%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 228 100% 94%;
     --sidebar-accent-foreground: 231 100% 40%;
     --sidebar-border: 214 32% 91%;
-    --sidebar-ring: 231 100% 50%;
+    --sidebar-ring: 223 100% 42%;
   }
 
   .dark {
@@ -81,7 +90,7 @@
     --card-foreground: 210 40% 96%;
     --popover: 222 47% 11%;
     --popover-foreground: 210 40% 96%;
-    --primary: 231 100% 65%;
+    --primary: 223 100% 65%;
     --primary-foreground: 222 47% 8%;
     --primary-muted: 231 50% 20%;
     --secondary: 222 30% 18%;
@@ -99,15 +108,15 @@
     --destructive-foreground: 0 0% 100%;
     --border: 222 28% 22%;
     --input: 222 28% 22%;
-    --ring: 231 100% 65%;
+    --ring: 223 100% 65%;
     --sidebar-background: 222 47% 8%;
     --sidebar-foreground: 210 40% 96%;
-    --sidebar-primary: 231 100% 65%;
+    --sidebar-primary: 223 100% 65%;
     --sidebar-primary-foreground: 222 47% 8%;
     --sidebar-accent: 231 50% 22%;
     --sidebar-accent-foreground: 228 80% 80%;
     --sidebar-border: 222 28% 22%;
-    --sidebar-ring: 231 100% 65%;
+    --sidebar-ring: 223 100% 65%;
   }
 }
 
@@ -124,13 +133,13 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     line-height: 1.6;
   }
 
   /* Verdana Health Typography */
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
     font-weight: 700;
     line-height: 1.2;
     color: hsl(var(--foreground));
@@ -164,15 +173,17 @@
 /* Klinik Adera brand utilities */
 @layer utilities {
   .adera-topbar {
-    background-color: hsl(231 100% 50%);
+    background-color: hsl(var(--primary));
   }
 
+  /* Banner ground, lifted verbatim from the Figma "Banner" frame. */
   .adera-hero-bg {
-    background: linear-gradient(160deg, hsl(210 40% 98%) 0%, hsl(228 100% 95%) 100%);
+    background: linear-gradient(166.93deg, #E9F4FF 19.153%, #C3E2FF 114.75%);
+    box-shadow: 0 4px 17.8px 0 #C7E0FF;
   }
 
   .adera-cta-bg {
-    background: linear-gradient(135deg, hsl(231 100% 50%) 0%, hsl(238 100% 58%) 100%);
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--brand-sky)) 100%);
   }
 
   .adera-card-hover {
@@ -185,7 +196,7 @@
 
   .adera-stat-number {
     font-family: 'Fira Code', monospace;
-    color: hsl(231 100% 50%);
+    color: hsl(var(--primary));
     font-weight: 700;
   }
 

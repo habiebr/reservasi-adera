@@ -65,6 +65,13 @@ export default {
           foreground: "hsl(var(--info-foreground))",
         },
         "primary-muted": "hsl(var(--primary-muted))",
+        brand: {
+          navy: "hsl(var(--brand-navy))",
+          sky: "hsl(var(--brand-sky))",
+          gold: "hsl(var(--brand-gold))",
+          ink: "hsl(var(--brand-ink))",
+          "ink-50": "hsl(var(--brand-ink-50))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -77,8 +84,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["DM Sans", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
-        display: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+        display: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["Fira Code", "ui-monospace", "monospace"],
       },
       fontSize: {
