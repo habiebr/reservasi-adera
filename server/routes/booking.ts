@@ -7,6 +7,7 @@ import {
   createCalqPatient,
   findCalqPatientByMrn,
   findCalqPatientByNik,
+  getAppointment,
   getDoctorDaySlots,
   getProcedures,
   loadCalqCreds,
@@ -521,6 +522,90 @@ bookingRoutes.get("/status", async (c) => {
     queue_number: row.queue_number,
     emr_ok: row.sync_status === "REGISTERED",
     items: groupBookingItemRows(items),
+  });
+});
+
+/**
+ * Cek Antrean: NIK + tanggal lahir → this patient's upcoming visits and their queue numbers.
+ *
+ * Identity works exactly as /lookup does: the birth date is a second factor, matched in the
+ * WHERE clause rather than compared afterwards, so a NIK on its own selects no rows and the
+ * endpoint cannot be used to test whether a NIK has ever booked. The reply is masked for the
+ * same reason — it is an unauthenticated surface, so it carries only what the owner needs to
+ * recognise their own visit.
+ */
+bookingRoutes.post("/antrean", async (c) => {
+  const ip = c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for") ?? "local";
+  if (throttled(ip)) return c.json({ error: "Terlalu banyak percobaan, coba lagi sebentar." }, 429);
+
+  const body = await c.req.json().catch(() => ({}));
+  const nik = String(body.nik ?? "").replace(/\D/g, "");
+  const dob = String(body.tanggal_lahir ?? "").trim();
+  if (!isValidNik(nik)) return c.json({ error: "NIK harus 16 digit." }, 400);
+  if (!isValidTanggalLahir(dob)) return c.json({ error: "Tanggal lahir wajib diisi." }, 400);
+
+  // A booking can carry more than one payment row (a retry writes another), so take the
+  // newest per booking instead of joining and multiplying the visit rows.
+  const rows = await sql`
+    SELECT b.id, b.visit_date, b.slot_time, b.booking_order_type, b.status AS booking_status,
+           b.doctor_name, b.specialization_name, b.polyclinic_name,
+           bp.nama_lengkap,
+           e.appointment_id, e.booking_code, e.queue_number, e.queue_status, e.sync_status,
+           p.status AS payment_status
+      FROM bookings b
+      JOIN booking_patients bp ON bp.booking_id = b.id
+      LEFT JOIN booking_emr e ON e.booking_id = b.id
+      LEFT JOIN LATERAL (
+        SELECT status FROM booking_payments
+         WHERE booking_id = b.id ORDER BY created_at DESC LIMIT 1
+      ) p ON true
+     WHERE bp.nik = ${nik}
+       AND bp.tanggal_lahir = ${dob}
+       AND b.visit_date >= current_date
+       AND b.status <> 'CANCELLED'
+     ORDER BY b.visit_date, b.slot_time NULLS FIRST
+     LIMIT 5`;
+
+  if (rows.length === 0) return c.json({ found: false });
+
+  // The stored number is a snapshot from the moment the appointment was created. Re-read it
+  // so a patient who has since been called sees CHECKED_IN rather than a stale BOOKED. Calq
+  // being unreachable must not break the page, so every failure falls back to what we stored.
+  const creds = await loadCalqCreds().catch(() => null);
+  if (creds) {
+    await Promise.all(
+      rows.filter((r) => r.appointment_id).map(async (r) => {
+        const appt = await getAppointment(creds, String(r.appointment_id)).catch(() => null);
+        if (!appt?.queue) return;
+        const num = appt.queue.bookedNumber != null ? String(appt.queue.bookedNumber) : null;
+        const st = appt.queue.status ?? null;
+        if (num === r.queue_number && st === r.queue_status) return;
+        r.queue_number = num;
+        r.queue_status = st;
+        await sql`
+          UPDATE booking_emr SET queue_number = ${num}, queue_status = ${st}, updated_at = now()
+          WHERE booking_id = ${r.id}`;
+      }),
+    );
+  }
+
+  return c.json({
+    found: true,
+    masked_name: maskName(String(rows[0].nama_lengkap ?? "")),
+    visits: rows.map((r) => ({
+      visit_date: r.visit_date,
+      slot_time: r.slot_time,
+      booking_order_type: r.booking_order_type,
+      booking_status: r.booking_status,
+      payment_status: r.payment_status,
+      doctor_name: r.doctor_name,
+      specialization_name: r.specialization_name,
+      polyclinic_name: r.polyclinic_name,
+      booking_code: r.booking_code,
+      queue_number: r.queue_number,
+      queue_status: r.queue_status,
+      registered: r.sync_status === "REGISTERED",
+    })),
   });
 });
 

@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import VisitForm from "./pages/VisitForm";
 import VisitStatus from "./pages/VisitStatus";
 import AdminApp from "./pages/admin/AdminApp";
+import QueueCheck from "./pages/QueueCheck";
 import FormEditor from "./pages/admin/FormEditor";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
       <Routes>
         <Route path="/admin" element={<AdminApp />} />
         <Route path="/admin/forms/:id" element={<FormEditor />} />
+        <Route path="/antrean" element={<QueueCheck />} />
         <Route path="/:slug" element={<VisitForm />} />
         <Route path="/:slug/status" element={<VisitStatus />} />
         <Route path="/" element={<Home />} />

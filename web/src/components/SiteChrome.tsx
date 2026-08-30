@@ -4,6 +4,8 @@
 // utility bar, navbar, banner, footer. The slot itself carries the reservation wizard,
 // standing where Figma puts its doctor list.
 
+import { Link } from "react-router-dom";
+
 const SITE = "https://klinikadera.co.id";
 
 // Every contact detail the chrome prints, in one place. These are the numbers written in
@@ -108,6 +110,7 @@ export default function SiteChrome({
   title,
   subtitle,
   stats = DEFAULT_STATS,
+  showQueueLink = true,
   children,
 }: {
   eyebrow?: string;
@@ -116,6 +119,8 @@ export default function SiteChrome({
   /** Banner stat cards. Defaults to the figures in the Figma banner; pass `[]` to drop
    *  them on a page where they do not belong. */
   stats?: { label: string; value: string }[];
+  /** The Cek Antrean link. Off on the Cek Antrean page itself, which would self-link. */
+  showQueueLink?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -198,6 +203,15 @@ export default function SiteChrome({
         <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8">
           {children}
         </div>
+
+        {showQueueLink && (
+          <p className="mx-auto mt-4 max-w-2xl text-center text-sm text-muted-foreground">
+            Sudah pernah reservasi?{" "}
+            <Link to="/antrean" className="font-medium text-primary hover:underline">
+              Cek nomor antrean
+            </Link>
+          </p>
+        )}
       </section>
 
       {/* Footer */}
