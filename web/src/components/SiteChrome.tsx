@@ -3,8 +3,6 @@
 // 2656:58931). Everything outside the content slot is the clinic's real site furniture:
 // utility bar, navbar, banner, footer. The slot itself carries the reservation wizard,
 // standing where Figma puts its doctor list.
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
 
 const SITE = "https://klinikadera.co.id";
 
@@ -18,19 +16,6 @@ const CONTACT = {
   whatsappHref: "https://wa.me/62811276220",
   telegram: "0811 334 444 14",
 };
-
-// The clinic's top-level sections, in Figma's order. Only Beranda has a URL we can be
-// sure of; the rest stay plain labels rather than links that guess at a path and 404.
-// Drop the real section URLs in here and they become links with no other change.
-const NAV: { label: string; href?: string; caret?: boolean }[] = [
-  { label: "Beranda", href: SITE },
-  { label: "Layanan", caret: true },
-  { label: "Vaksinasi", caret: true },
-  { label: "Sunat Racing" },
-  { label: "Tenaga Medis" },
-  { label: "Berita" },
-  { label: "About us" },
-];
 
 const FOOTER_COLUMNS = [
   { title: "Layanan", items: ["Poli Umum", "Poli KIA", "Poli KB", "Poli Gigi", "Laboratorium"] },
@@ -123,7 +108,6 @@ export default function SiteChrome({
   title,
   subtitle,
   stats = DEFAULT_STATS,
-  activeNav = "Tenaga Medis",
   children,
 }: {
   eyebrow?: string;
@@ -132,57 +116,28 @@ export default function SiteChrome({
   /** Banner stat cards. Defaults to the figures in the Figma banner; pass `[]` to drop
    *  them on a page where they do not belong. */
   stats?: { label: string; value: string }[];
-  activeNav?: string;
   children: React.ReactNode;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
   return (
     <main className="min-h-screen bg-background">
-      {/* Utility bar. The phone number leads on mobile because it is the one thing a
-          patient on a phone is most likely to want; the rest appears from sm up. */}
+      {/* Utility bar. Pared back to the one line a patient actually wants; the rest of
+          the design's row (WhatsApp, ID, Masuk/Daftar) is dropped for now. */}
       <div className="adera-topbar text-white">
-        <div className="mx-auto flex max-w-[1328px] items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
-          <div className="hidden items-center gap-8 text-sm font-semibold tracking-[-0.02em] lg:flex">
-            <span>Pasien &amp; Pengunjung</span>
-            <span>Perusahaan</span>
-            <span>Kalkulator Kesehatan</span>
-          </div>
-          <div className="flex flex-1 items-center justify-between gap-4 text-xs font-semibold tracking-[-0.02em] sm:text-sm lg:flex-none lg:justify-end lg:gap-6">
-            <a href={CONTACT.phoneHref} className="flex items-center gap-2 hover:opacity-80">
-              <img src="/adera/icon-phone-badge.svg" alt="" className="h-5 w-5 shrink-0" />
-              <span className="whitespace-nowrap">Hubungi kami {CONTACT.phone}</span>
-            </a>
-            <a
-              href={CONTACT.whatsappHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 hover:opacity-80"
-            >
-              <img src="/adera/icon-whatsapp.svg" alt="" className="h-5 w-5 shrink-0" />
-              <span>Whatshap</span>
-            </a>
-            <img src="/adera/icon-divider.svg" alt="" className="hidden h-5 w-px lg:block" />
-            <span className="hidden items-center gap-2 lg:flex">
-              ID
-              <img src="/adera/icon-chevron.svg" alt="" className="h-[7px] w-[13px]" />
-            </span>
-            <a
-              href={SITE}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden items-center gap-2 rounded-[19px] bg-white px-2.5 py-[5px] text-primary lg:flex"
-            >
-              <img src="/adera/icon-user.svg" alt="" className="h-3 w-3" />
-              Masuk/Daftar
-            </a>
-          </div>
+        <div className="mx-auto flex max-w-[1328px] items-center justify-end px-4 py-2.5 sm:px-6">
+          <a
+            href={CONTACT.phoneHref}
+            className="flex items-center gap-2 text-xs font-semibold tracking-[-0.02em] hover:opacity-80 sm:text-sm"
+          >
+            <img src="/adera/icon-phone-badge.svg" alt="" className="h-5 w-5 shrink-0" />
+            <span className="whitespace-nowrap">Hubungi kami {CONTACT.phone}</span>
+          </a>
         </div>
       </div>
 
-      {/* Navbar */}
+      {/* Navbar. Section links are intentionally left out for now — the reservation
+          flow is the whole page, and the clinic's own site owns that navigation. */}
       <nav className="sticky top-0 z-20 bg-white shadow-sm">
-        <div className="mx-auto flex max-w-[1328px] items-center justify-between gap-6 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-[1328px] items-center px-4 py-3 sm:px-6">
           <a href={SITE} target="_blank" rel="noopener noreferrer" className="shrink-0">
             <img
               src="/adera/logo-adera-color.png"
@@ -190,69 +145,7 @@ export default function SiteChrome({
               className="h-10 w-auto sm:h-[50px]"
             />
           </a>
-
-          <div className="hidden items-center gap-2 lg:flex">
-            {NAV.map((item) => {
-              const active = item.label === activeNav;
-              const inner = (
-                <>
-                  {item.label}
-                  {item.caret && (
-                    <img
-                      src="/adera/icon-chevron-dark.svg"
-                      alt=""
-                      className="h-[13px] w-[7px] -rotate-90"
-                    />
-                  )}
-                </>
-              );
-              const cls = `flex items-center gap-1 rounded-[31px] p-3 text-[17px] leading-none transition-colors ${
-                active ? "bg-brand-sky font-medium text-white" : "text-brand-ink-50 hover:bg-muted"
-              }`;
-              return item.href ? (
-                <a key={item.label} href={item.href} target="_blank" rel="noopener noreferrer" className={cls}>
-                  {inner}
-                </a>
-              ) : (
-                <span key={item.label} className={cls}>
-                  {inner}
-                </span>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            aria-expanded={menuOpen}
-            aria-label={menuOpen ? "Tutup menu" : "Buka menu"}
-            className="rounded-lg p-2 text-brand-ink lg:hidden"
-          >
-            {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
         </div>
-
-        {menuOpen && (
-          <div className="border-t border-border lg:hidden">
-            <div className="mx-auto max-w-[1328px] px-4 py-2 sm:px-6">
-              {NAV.map((item) => {
-                const active = item.label === activeNav;
-                const cls = `block rounded-lg px-3 py-3 text-[15px] ${
-                  active ? "bg-brand-sky font-medium text-white" : "text-brand-ink-50"
-                }`;
-                return item.href ? (
-                  <a key={item.label} href={item.href} target="_blank" rel="noopener noreferrer" className={cls}>
-                    {item.label}
-                  </a>
-                ) : (
-                  <span key={item.label} className={cls}>
-                    {item.label}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </nav>
 
       {/* Banner. The doctor cutout is decorative and drops out below lg, where the
