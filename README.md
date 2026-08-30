@@ -94,6 +94,7 @@ ulang — cookie sesi terikat pada host.
 
 | URL | Untuk | Isi |
 |---|---|---|
+| `/` | Publik | Daftar layanan reservasi yang sedang terbit |
 | `/{slug}` | Publik | Wizard reservasi hasil builder |
 | `/{slug}?embed=1` | Publik | Wizard tanpa chrome situs, untuk disematkan lewat iframe |
 | `/{slug}/status?invoice=` | Publik | Status bayar → kode booking, antrean, invoice |

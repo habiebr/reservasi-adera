@@ -51,6 +51,24 @@ export async function formBySlug(slug: string) {
   return rows[0] ?? null;
 }
 
+/** The published forms a patient may open. Feeds the landing page at "/" — the bare domain
+ * belongs to patients, not to the admin login. */
+publicRoutes.get("/forms", async (c) => {
+  const rows = await sql`
+    SELECT slug, title, description
+    FROM forms WHERE status = 'published'
+    ORDER BY title`;
+  // The form's own name, not its hero headline: two forms can share a headline, and in a
+  // list the patient needs the thing that tells them apart.
+  return c.json({
+    forms: rows.map((f) => ({
+      slug: f.slug,
+      title: f.title as string,
+      description: f.description ?? null,
+    })),
+  });
+});
+
 publicRoutes.get("/forms/:slug", async (c) => {
   const form = await publishedForm(c.req.param("slug"));
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
