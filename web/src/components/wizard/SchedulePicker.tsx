@@ -153,28 +153,23 @@ export default function SchedulePicker(
         </div>
       </div>
 
-      {data.visitDate && (
+      {/* Nothing follows the calendar on the antrean path: the jam belongs to the doctor step
+          there, so a date heading with a line of instructions under it would be a stub
+          restating what the highlighted day already says. */}
+      {data.visitDate && (!dateFirst || hourFirst) && (
         <div>
           <p className="mb-2 text-sm font-semibold text-foreground">
             {format(selectedDate!, "EEEE, d MMMM yyyy", { locale: localeId })}
           </p>
-          {dateFirst && !hourFirst
-            ? (
-              <p className="text-sm text-muted-foreground">
-                Selanjutnya pilih dokter yang praktik pada tanggal ini.
-              </p>
-            )
-            : (
-              <SlotList
-                slug={slug}
-                specializationId={data.specializationId!}
-                doctorId={hourFirst ? undefined : data.doctorId!}
-                date={data.visitDate}
-                timeDisplay={timeDisplay}
-                data={data}
-                update={update}
-              />
-            )}
+          <SlotList
+            slug={slug}
+            specializationId={data.specializationId!}
+            doctorId={hourFirst ? undefined : data.doctorId!}
+            date={data.visitDate}
+            timeDisplay={timeDisplay}
+            data={data}
+            update={update}
+          />
         </div>
       )}
     </div>
