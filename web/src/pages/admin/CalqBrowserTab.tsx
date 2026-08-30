@@ -183,6 +183,79 @@ const Td = ({ children, className }: { children: React.ReactNode; className?: st
 
 const Loading = () => <p className="p-4 text-sm text-muted-foreground">Memuat dari Calq…</p>;
 
+const PAGE_SIZE = 25;
+
+interface Paged<T> {
+  rows: T[];
+  page: number;
+  totalPages: number;
+  total: number;
+  from: number;
+  to: number;
+  setPage: (p: number) => void;
+}
+
+/** Paging happens here, not upstream: Calq ignores ?limit and always returns the whole list
+ *  ({status, data, message} — no cursor, no total), so there is nothing to page through at the
+ *  API. We slice what we already hold, which also keeps search spanning every row rather than
+ *  just the visible page. `resetKey` (the search term) sends you back to page 1 — without it a
+ *  narrowed filter strands you on a page that no longer exists. */
+function usePaged<T>(all: T[], resetKey: unknown): Paged<T> {
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [resetKey]);
+  const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+  const current = Math.min(page, totalPages);
+  const start = (current - 1) * PAGE_SIZE;
+  return {
+    rows: all.slice(start, start + PAGE_SIZE),
+    page: current,
+    totalPages,
+    total: all.length,
+    from: all.length ? start + 1 : 0,
+    to: Math.min(start + PAGE_SIZE, all.length),
+    setPage,
+  };
+}
+
+const PagerBtn = (
+  { disabled, onClick, children }: {
+    disabled: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+  },
+) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    {children}
+  </button>
+);
+
+/** Renders nothing when everything fits on one page, so short tables stay uncluttered. */
+function Pager({ page, totalPages, total, from, to, setPage }: Paged<unknown>) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-xs text-muted-foreground">
+        Menampilkan <span className="tabular-nums">{from}–{to}</span> dari{" "}
+        <span className="tabular-nums">{total}</span>
+      </p>
+      <div className="flex items-center gap-1">
+        <PagerBtn disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</PagerBtn>
+        <span className="px-2 text-xs tabular-nums text-muted-foreground">
+          {page} / {totalPages}
+        </span>
+        <PagerBtn disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+          Berikutnya
+        </PagerBtn>
+      </div>
+    </div>
+  );
+}
+
 function TypeChip({ exact }: { exact: boolean }) {
   return (
     <span className={cn("chip", exact ? "chip-info" : "chip-success")}>
@@ -203,17 +276,20 @@ function useSpecNames(polis: CalqPoli[] | null) {
 
 function PoliSection({ polis }: { polis: CalqPoli[] | null }) {
   const [q, setQ] = useState("");
+  const rows = useMemo(
+    () =>
+      (polis ?? [])
+        .flatMap((p) => p.specializations.map((s) => ({ poli: p, spec: s })))
+        .filter((r) => `${r.poli.name} ${r.spec.name}`.toLowerCase().includes(q.toLowerCase())),
+    [polis, q],
+  );
+  const paged = usePaged(rows, q);
   if (!polis) return <Loading />;
-  const rows = polis
-    .flatMap((p) => p.specializations.map((s) => ({ poli: p, spec: s })))
-    .filter((r) =>
-      `${r.poli.name} ${r.spec.name}`.toLowerCase().includes(q.toLowerCase())
-    );
   return (
     <div className="space-y-3">
       <SearchBox value={q} onChange={setQ} placeholder="Cari poli / spesialisasi…" />
       <DataTable head={["Spesialisasi", "Poli", "Tipe Reservasi", "ID"]} empty={rows.length === 0}>
-        {rows.map((r) => (
+        {paged.rows.map((r) => (
           <tr key={r.spec.id}>
             <Td className="font-medium">{r.spec.name}</Td>
             <Td className="text-muted-foreground">{r.poli.name}</Td>
@@ -222,6 +298,7 @@ function PoliSection({ polis }: { polis: CalqPoli[] | null }) {
           </tr>
         ))}
       </DataTable>
+      <Pager {...paged} />
     </div>
   );
 }
@@ -315,13 +392,17 @@ function ProceduresSection({ polis }: { polis: CalqPoli[] | null }) {
       .catch(() => setProcs([]));
   }, []);
 
+  const rows = useMemo(
+    () => (procs ?? []).filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
+    [procs, q],
+  );
+  const paged = usePaged(rows, q);
   if (!procs) return <Loading />;
-  const rows = procs.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="space-y-3">
       <SearchBox value={q} onChange={setQ} placeholder="Cari tindakan…" />
       <DataTable head={["Tindakan", "Spesialisasi", "Harga", "DP Calq", "ID"]} empty={rows.length === 0}>
-        {rows.map((p) => (
+        {paged.rows.map((p) => (
           <tr key={p.id}>
             <Td className="font-medium">{p.name}</Td>
             <Td className="text-muted-foreground">{specNames.get(p.specializationId) ?? "—"}</Td>
@@ -333,6 +414,7 @@ function ProceduresSection({ polis }: { polis: CalqPoli[] | null }) {
           </tr>
         ))}
       </DataTable>
+      <Pager {...paged} />
     </div>
   );
 }
@@ -347,12 +429,17 @@ function ProductsSection() {
       .catch(() => setProducts([]));
   }, []);
 
-  if (!products) return <Loading />;
-  const rows = products.filter((p) =>
-    `${p.name} ${p.genericName ?? ""} ${p.manufacturer ?? ""} ${p.sku ?? ""}`
-      .toLowerCase()
-      .includes(q.toLowerCase())
+  const rows = useMemo(
+    () =>
+      (products ?? []).filter((p) =>
+        `${p.name} ${p.genericName ?? ""} ${p.manufacturer ?? ""} ${p.sku ?? ""}`
+          .toLowerCase()
+          .includes(q.toLowerCase())
+      ),
+    [products, q],
   );
+  const paged = usePaged(rows, q);
+  if (!products) return <Loading />;
   return (
     <div className="space-y-3">
       <SearchBox value={q} onChange={setQ} placeholder="Cari obat / produk…" />
@@ -360,7 +447,7 @@ function ProductsSection() {
         head={["Nama", "Generik", "Bentuk / Dosis", "Pabrikan", "Harga", "ID"]}
         empty={rows.length === 0}
       >
-        {rows.map((p) => (
+        {paged.rows.map((p) => (
           <tr key={p.id}>
             <Td className="font-medium">
               {p.name}
@@ -376,6 +463,7 @@ function ProductsSection() {
           </tr>
         ))}
       </DataTable>
+      <Pager {...paged} />
       <p className="text-[11px] text-muted-foreground">
         Obat/produk belum bisa dijual lewat form reservasi — daftar ini untuk referensi.
       </p>
@@ -393,8 +481,12 @@ function VaccinesSection() {
       .catch(() => setVaccines([]));
   }, []);
 
+  const rows = useMemo(
+    () => (vaccines ?? []).filter((v) => v.name.toLowerCase().includes(q.toLowerCase())),
+    [vaccines, q],
+  );
+  const paged = usePaged(rows, q);
   if (!vaccines) return <Loading />;
-  const rows = vaccines.filter((v) => v.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="space-y-3">
       <SearchBox value={q} onChange={setQ} placeholder="Cari vaksin…" />
@@ -402,7 +494,7 @@ function VaccinesSection() {
         head={["Vaksin", "Tipe", "Rentang Usia", "Frekuensi", "Tindakan Terkait"]}
         empty={rows.length === 0}
       >
-        {rows.map((v) => (
+        {paged.rows.map((v) => (
           <tr key={v.id}>
             <Td className="font-medium">{v.name}</Td>
             <Td className="text-muted-foreground">{v.type ?? "—"}</Td>
@@ -416,6 +508,7 @@ function VaccinesSection() {
           </tr>
         ))}
       </DataTable>
+      <Pager {...paged} />
     </div>
   );
 }
@@ -430,13 +523,17 @@ function RoomsSection() {
       .catch(() => setRooms([]));
   }, []);
 
+  const rows = useMemo(
+    () => (rooms ?? []).filter((r) => r.name.toLowerCase().includes(q.toLowerCase())),
+    [rooms, q],
+  );
+  const paged = usePaged(rows, q);
   if (!rooms) return <Loading />;
-  const rows = rooms.filter((r) => r.name.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="space-y-3">
       <SearchBox value={q} onChange={setQ} placeholder="Cari ruangan…" />
       <DataTable head={["Ruangan", "Status", "ID"]} empty={rows.length === 0}>
-        {rows.map((r) => (
+        {paged.rows.map((r) => (
           <tr key={r.id}>
             <Td className="font-medium">{r.name}</Td>
             <Td>
@@ -448,6 +545,7 @@ function RoomsSection() {
           </tr>
         ))}
       </DataTable>
+      <Pager {...paged} />
       <p className="text-[11px] text-muted-foreground">
         ID ruangan dipakai untuk pengaturan CALQ_DEFAULT_ROOM_ID (ruang default sale reservasi).
       </p>
@@ -470,11 +568,12 @@ function PaymentsSection() {
       .catch(() => setMethods([]));
   }, []);
 
+  const paged = usePaged(methods ?? [], "");
   if (!methods) return <Loading />;
   return (
     <div className="space-y-3">
       <DataTable head={["Metode", "Kategori", "Status", "ID"]} empty={methods.length === 0}>
-        {methods.map((m) => (
+        {paged.rows.map((m) => (
           <tr key={m.id}>
             <Td className="font-medium">
               {m.name}
@@ -492,6 +591,7 @@ function PaymentsSection() {
           </tr>
         ))}
       </DataTable>
+      <Pager {...paged} />
       <p className="text-[11px] text-muted-foreground">
         Metode bertanda "dipakai reservasi" adalah tempat pembayaran DOKU dicatat di Calq
         (CALQ_PAYMENT_METHOD_ID).
