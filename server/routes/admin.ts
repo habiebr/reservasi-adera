@@ -47,7 +47,7 @@ const slugify = (v: string) =>
 
 adminRoutes.get("/forms", async (c) => {
   const forms = await sql`
-    SELECT f.id, f.slug, f.title, f.status, f.updated_at,
+    SELECT f.id, f.slug, f.title, f.status, f.is_home, f.updated_at,
            (SELECT count(*) FROM bookings b WHERE b.form_id = f.id) AS booking_count
     FROM forms f
     WHERE f.status != 'archived'
@@ -83,6 +83,7 @@ adminRoutes.get("/forms/:id", async (c) => {
     slug: form.slug,
     title: form.title,
     status: form.status,
+    isHome: form.is_home === true,
     branding: {
       headline: form.headline,
       description: form.description,
@@ -130,9 +131,33 @@ adminRoutes.post("/forms/:id/publish", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Claim the bare domain for this form, or hand it back. Only one form can hold it, so
+ * claiming releases whoever held it before — in one statement, since the unique index would
+ * refuse an overlapping moment. A draft cannot hold it: "/" would 404 for every patient. */
+adminRoutes.post("/forms/:id/home", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const claim = body.isHome !== false;
+  const rows = await sql`SELECT status FROM forms WHERE id = ${id}`;
+  if (rows.length === 0) return c.json({ error: "Tidak ditemukan" }, 404);
+  if (claim && rows[0].status !== "published") {
+    return c.json({ error: "Terbitkan dulu sebelum dijadikan halaman utama." }, 422);
+  }
+  // Two statements, not one: the unique index is checked per row, so a single UPDATE that
+  // both releases the old holder and claims for the new one can trip over itself mid-scan.
+  await sql.begin(async (tx) => {
+    await tx`UPDATE forms SET is_home = false WHERE is_home AND id <> ${id}`;
+    await tx`UPDATE forms SET is_home = ${claim} WHERE id = ${id}`;
+  });
+  return c.json({ ok: true, isHome: claim });
+});
+
 adminRoutes.post("/forms/:id/unpublish", async (c) => {
+  // Withdrawing a form also gives up the bare domain: "/" must never point at a form the
+  // patient would meet as a 404.
   await sql`
-    UPDATE forms SET status = 'draft', updated_at = now() WHERE id = ${c.req.param("id")}`;
+    UPDATE forms SET status = 'draft', is_home = false, updated_at = now()
+    WHERE id = ${c.req.param("id")}`;
   return c.json({ ok: true });
 });
 

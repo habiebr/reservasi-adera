@@ -1,12 +1,15 @@
-// The bare domain belongs to patients: a list of the reservations they can start. Admin
-// lives at /admin and is not linked from here — staff know the address, patients do not
-// need to meet a login screen.
+// The bare domain belongs to patients. One form owns it and is rendered here outright — a
+// menu of services followed by the wizard's own "Pilih Poli" made the patient choose the
+// same thing twice, which is exactly the seam this avoids. The list only appears while no
+// form has claimed the slot, so "/" always leads somewhere. Admin lives at /admin and is
+// not linked from here: staff know the address, patients need not meet a login screen.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, CalendarCheck } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet } from "@/lib/api";
 import SiteChrome from "@/components/SiteChrome";
+import VisitForm from "./VisitForm";
 
 interface FormLink {
   slug: string;
@@ -16,13 +19,33 @@ interface FormLink {
 
 export default function Home() {
   const [forms, setForms] = useState<FormLink[] | null>(null);
+  const [home, setHome] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    apiGet<{ forms: FormLink[] }>("/api/forms")
-      .then((r) => setForms(r.forms))
+    apiGet<{ home: string | null; forms: FormLink[] }>("/api/forms")
+      .then((r) => {
+        setHome(r.home);
+        setForms(r.forms);
+      })
       .catch(() => setFailed(true));
   }, []);
+
+  // Straight into the wizard, chrome and all — indistinguishable from opening /{slug}.
+  if (home) return <VisitForm slug={home} />;
+
+  // Until the answer lands we do not know whether this is a form or a list, so borrow the
+  // form page's own loading title rather than flashing a heading we may be about to drop.
+  if (!forms && !failed) {
+    return (
+      <SiteChrome title="Memuat…">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-full rounded-lg" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
+      </SiteChrome>
+    );
+  }
 
   return (
     <SiteChrome
@@ -33,11 +56,6 @@ export default function Home() {
         <p className="text-center text-sm text-muted-foreground">
           Daftar layanan sedang tidak bisa dimuat. Silakan muat ulang halaman ini.
         </p>
-      )}
-      {!failed && !forms && (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
-        </div>
       )}
       {forms?.length === 0 && (
         <p className="text-center text-sm text-muted-foreground">

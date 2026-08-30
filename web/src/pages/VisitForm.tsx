@@ -49,8 +49,9 @@ function useReportHeight(enabled: boolean) {
   return ref;
 }
 
-export default function VisitForm() {
-  const { slug = "" } = useParams();
+export default function VisitForm({ slug: fixedSlug }: { slug?: string } = {}) {
+  const { slug: routeSlug = "" } = useParams();
+  const slug = fixedSlug ?? routeSlug;
   const [params] = useSearchParams();
   const embedded = params.get("embed") === "1";
   const [form, setForm] = useState<PublicForm | null>(null);

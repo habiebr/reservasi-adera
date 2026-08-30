@@ -55,12 +55,15 @@ export async function formBySlug(slug: string) {
  * belongs to patients, not to the admin login. */
 publicRoutes.get("/forms", async (c) => {
   const rows = await sql`
-    SELECT slug, title, description
+    SELECT slug, title, description, is_home
     FROM forms WHERE status = 'published'
     ORDER BY title`;
   // The form's own name, not its hero headline: two forms can share a headline, and in a
   // list the patient needs the thing that tells them apart.
   return c.json({
+    // The form that answers "/" outright. Null falls back to listing them, so the bare
+    // domain still leads somewhere while nobody has claimed it.
+    home: (rows.find((f) => f.is_home)?.slug as string) ?? null,
     forms: rows.map((f) => ({
       slug: f.slug,
       title: f.title as string,

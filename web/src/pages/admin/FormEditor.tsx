@@ -27,6 +27,7 @@ import {
   Copy,
   Eye,
   GripVertical,
+  Home,
   Plus,
   Smartphone,
   Trash2,
@@ -150,6 +151,7 @@ interface FormDetail {
   slug: string;
   title: string;
   status: string;
+  isHome: boolean;
   branding: FormBranding;
   definition: FormDefinition;
   problems: string[];
@@ -325,7 +327,16 @@ export default function FormEditor() {
   };
   const unpublish = async () => {
     await apiPost(`/api/admin/forms/${id}/unpublish`);
-    setForm((f) => (f ? { ...f, status: "draft" } : f));
+    // Withdrawing also gives up the bare domain — mirror what the server just did.
+    setForm((f) => (f ? { ...f, status: "draft", isHome: false } : f));
+  };
+  const setHome = async (isHome: boolean) => {
+    try {
+      await apiPost(`/api/admin/forms/${id}/home`, { isHome });
+      setForm((f) => (f ? { ...f, isHome } : f));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Gagal mengubah halaman utama.");
+    }
   };
 
   if (!form || !def) return <div className="min-h-screen bg-background" />;
@@ -364,6 +375,18 @@ export default function FormEditor() {
             ? (
               <>
                 <span className="chip chip-success">Terbit</span>
+                <Button
+                  variant={form.isHome ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setHome(!form.isHome)}
+                  className="gap-1"
+                  title={form.isHome
+                    ? "Form ini yang dibuka saat pasien mengetik nama domain saja"
+                    : "Jadikan form ini yang terbuka di alamat utama"}
+                >
+                  <Home className="h-4 w-4" />
+                  {form.isHome ? "Halaman utama" : "Jadikan utama"}
+                </Button>
                 <Button variant="outline" size="sm" onClick={unpublish}>Tarik</Button>
               </>
             )
