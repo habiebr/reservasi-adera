@@ -10,3 +10,9 @@ cloudflared/*.json
 # Local working assets: design canvas + reference screenshots (not part of the build)
 design/
 example/
+
+# Timestamped .env backups taken during deploys — same secrets as .env, must never be committed
+.env.bak-*
+
+# Per-host compose overrides (prod parks cloudflared here; the tunnel is staging's alone)
+docker-compose.override.yml
