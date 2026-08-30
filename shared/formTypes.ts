@@ -295,20 +295,18 @@ export function defaultDefinition(makeId: () => string): FormDefinition {
     poli_picker: "Pilih Poli",
     doctor_picker: "Pilih Dokter",
     schedule_picker: "Pilih Jadwal",
-    patient_lookup: "Data Pasien",
+    patient_lookup: "Cek Pasien",
     patient_data: "Data Pasien",
     pricing_payment: "Pembayaran",
     summary_consent: "Konfirmasi",
     info_page: "",
     screening: "Skrining",
   };
+  // One block per page, and the registration form gets its own on purpose: it is the step a
+  // returning patient never sees. Sharing a page with the NIK check would strand it under a
+  // check that just succeeded — nothing to fill, yet the page stays.
   const pages: FormPage[] = [];
   for (const kind of SEQUENCE) {
-    // lookup + data share one page by default
-    if (kind === "patient_data" && pages.length > 0) {
-      pages[pages.length - 1].blocks.push(newBlock(kind, makeId()));
-      continue;
-    }
     pages.push({ id: makeId(), title: pageTitles[kind], blocks: [newBlock(kind, makeId())] });
   }
   return { schemaVersion: 1, pages };
