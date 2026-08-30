@@ -50,7 +50,7 @@ function carriedRows(
   if (kinds.has("poli_picker") && data.specializationName) {
     rows.push({ label: "Poli", value: data.specializationName });
   }
-  const doctorRow = kinds.has("doctor_picker") && data.doctorName
+  const doctorRow = kinds.has("doctor_picker") && data.doctorName && !data.doctorImplicit
     ? { label: "Dokter", value: data.doctorName }
     : null;
   let scheduleRow: { label: string; value: string } | null = null;
@@ -362,6 +362,7 @@ export default function WizardRenderer({
               )}
               <Cmp
                 slug={slug}
+                definition={definition}
                 block={block}
                 data={data}
                 update={update}

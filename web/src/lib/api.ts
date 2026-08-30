@@ -62,8 +62,22 @@ export interface SlotsResponse {
   bookingOrderType: string;
   sessionDuration: number;
   doctorName: string;
-  timeSlots: { startTime: string; endTime: string; scheduleId: number; available: boolean }[];
-  sessions: { scheduleId: number; startTime: string; endTime: string }[];
+  timeSlots: {
+    startTime: string;
+    endTime: string;
+    scheduleId: number;
+    available: boolean;
+    /** Which doctor owns the slot — set when the grid merges a whole poli. */
+    doctorId?: number | null;
+    doctorName?: string | null;
+  }[];
+  sessions: {
+    scheduleId: number;
+    startTime: string;
+    endTime: string;
+    doctorId?: number | null;
+    doctorName?: string | null;
+  }[];
 }
 
 export interface ProcedureOption {

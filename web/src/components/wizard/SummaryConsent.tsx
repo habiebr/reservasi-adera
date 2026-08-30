@@ -98,7 +98,9 @@ export default function SummaryConsent({ slug, block, data, update }: BlockProps
         <SectionLabel>Detail kunjungan</SectionLabel>
         <dl className="grid gap-3 rounded-xl border border-border bg-card p-4">
           <Field label="Poli" value={data.specializationName ?? "-"} />
-          <Field label="Dokter" value={data.doctorName ?? "-"} />
+          {/* An hour-first poli hands the patient a time, not a person: naming the doctor
+              here would answer a question they were never asked. */}
+          {!data.doctorImplicit && <Field label="Dokter" value={data.doctorName ?? "-"} />}
           <Field label="Tanggal" value={tanggal} />
           <Field
             label="Jam"

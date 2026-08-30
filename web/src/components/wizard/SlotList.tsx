@@ -16,6 +16,15 @@ import { apiGet, type SlotsResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { BlockProps } from "./types";
 
+/** A merged slot brings its own doctor. Adopting it silently is the point: the patient chose
+ * an hour, so `doctorImplicit` tells the rest of the wizard not to parade a name they never
+ * picked. A single-doctor grid carries no doctor and leaves the choice untouched. */
+function doctorOf(slot: { doctorId?: number | null; doctorName?: string | null }) {
+  return slot.doctorId
+    ? { doctorId: slot.doctorId, doctorName: slot.doctorName ?? "", doctorImplicit: true }
+    : {};
+}
+
 export default function SlotList({
   slug,
   specializationId,
@@ -27,7 +36,8 @@ export default function SlotList({
 }: {
   slug: string;
   specializationId: number;
-  doctorId: number;
+  /** Omitted for an hour-first poli: every doctor's slots arrive in one grid. */
+  doctorId?: number;
   date: string;
   timeDisplay: "segmented" | "dropdown";
   data: BlockProps["data"];
@@ -42,7 +52,8 @@ export default function SlotList({
     setSlots(null);
     setError("");
     apiGet<SlotsResponse>(
-      `/api/calq/slots?slug=${slug}&specializationId=${specializationId}&doctorId=${doctorId}&date=${date}`,
+      `/api/calq/slots?slug=${slug}&specializationId=${specializationId}&date=${date}` +
+        (doctorId ? `&doctorId=${doctorId}` : ""),
     )
       .then(setSlots)
       .catch((e) => setError(e.message))
@@ -102,7 +113,7 @@ function TimeSlotPicker({
         value={data.slotTime ?? ""}
         onValueChange={(v) => {
           const slot = slots.timeSlots.find((s) => s.startTime === v);
-          if (slot) update({ slotTime: v, scheduleId: slot.scheduleId });
+          if (slot) update({ slotTime: v, scheduleId: slot.scheduleId, ...doctorOf(slot) });
         }}
       >
         <SelectTrigger className="h-11 w-full sm:w-64">
@@ -130,7 +141,8 @@ function TimeSlotPicker({
             role="radio"
             aria-checked={selected}
             disabled={!s.available}
-            onClick={() => update({ slotTime: s.startTime, scheduleId: s.scheduleId })}
+            onClick={() =>
+              update({ slotTime: s.startTime, scheduleId: s.scheduleId, ...doctorOf(s) })}
             className={cn(
               "flex h-11 items-center justify-center rounded-lg border-2 text-sm font-medium tabular-nums transition-all",
               !s.available
@@ -174,7 +186,12 @@ function QueueSessions({
             key={s.scheduleId}
             type="button"
             onClick={() =>
-              update({ scheduleId: s.scheduleId, slotTime: null, sessionLabel: label })}
+              update({
+                scheduleId: s.scheduleId,
+                slotTime: null,
+                sessionLabel: label,
+                ...doctorOf(s),
+              })}
             className={cn(
               "flex w-full items-center gap-3 rounded-xl border-2 p-4 text-left transition-all",
               selected

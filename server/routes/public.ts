@@ -3,6 +3,7 @@
 // untrusted. polis/schedule-days/procedures get a short in-memory cache; slots never do.
 import { Hono } from "hono";
 import { sql } from "../db.ts";
+import type { CalqCreds, CalqDoctorWithSchedules } from "../calq.ts";
 import {
   getCalqProducts,
   getDoctorDaySlots,
@@ -279,19 +280,49 @@ publicRoutes.get("/calq/days", async (c) => {
   return c.json({ days: out });
 });
 
+/**
+ * Every doctor's slots for one date, poured into a single grid. Two doctors free at 11:00
+ * would otherwise show 11:00 twice — one entry per hour survives, preferring one still open,
+ * and it carries its own doctor so the appointment can still be booked against a real
+ * schedule. Sessions are merged the same way for the queue case.
+ */
+async function mergedDaySlots(creds: CalqCreds, specializationId: number, date: string) {
+  const doctors = await getDoctorSchedules(creds, specializationId, date);
+  const onDuty = doctors.filter((d) => (d.schedules ?? []).length > 0);
+  if (onDuty.length === 0) return null;
+  const named = (d: CalqDoctorWithSchedules) =>
+    [d.title, d.firstName, d.lastName].filter(Boolean).join(" ").trim();
+  return {
+    bookingOrderType: onDuty[0].bookingOrderType,
+    sessionDuration: onDuty[0].sessionDuration,
+    doctorName: "",
+    timeSlots: onDuty.flatMap((d) =>
+      (d.timeSlots ?? []).map((s) => ({ ...s, doctorId: d.id, doctorName: named(d) }))
+    ),
+    sessions: onDuty.flatMap((d) =>
+      (d.schedules ?? []).map((s) => ({ ...s, doctorId: d.id, doctorName: named(d) }))
+    ),
+  };
+}
+
 publicRoutes.get("/calq/slots", async (c) => {
   const form = await formBySlug(c.req.query("slug") ?? "");
   if (!form) return c.json({ error: "Form tidak ditemukan" }, 404);
   const specializationId = Number(c.req.query("specializationId"));
-  const doctorId = Number(c.req.query("doctorId"));
+  const doctorId = Number(c.req.query("doctorId")) || null;
   const date = c.req.query("date") ?? "";
-  if (!specializationId || !doctorId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return c.json({ error: "specializationId, doctorId, dan date wajib" }, 400);
+  if (!specializationId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ error: "specializationId dan date wajib" }, 400);
   }
   const creds = await loadCalqCreds();
   if (!creds) return c.json({ error: "EMR belum dikonfigurasi" }, 503);
 
-  const day = await getDoctorDaySlots(creds, specializationId, doctorId, date);
+  // No doctorId: the patient picks an hour, not a person. Every doctor's slots for the date
+  // are poured into one grid and each slot carries the doctor it belongs to, so the booking
+  // still names one — the choice is simply made for the patient instead of by them.
+  const day = doctorId
+    ? await getDoctorDaySlots(creds, specializationId, doctorId, date)
+    : await mergedDaySlots(creds, specializationId, date);
   if (!day) return c.json({ error: "Dokter tidak ditemukan" }, 404);
 
   // Subtract this app's own live holds (pending checkouts + paid-but-not-yet-synced).
@@ -314,6 +345,8 @@ publicRoutes.get("/calq/slots", async (c) => {
       startTime: s.startTime,
       endTime: s.endTime,
       scheduleId: s.scheduleId,
+      doctorId: (s as { doctorId?: number }).doctorId ?? doctorId,
+      doctorName: (s as { doctorName?: string }).doctorName ?? day.doctorName,
       available: s.status === "available" &&
         !heldKeys.has(`${s.scheduleId}|${s.startTime}`) &&
         !isPast(date, s.startTime, now),
@@ -324,6 +357,8 @@ publicRoutes.get("/calq/slots", async (c) => {
         scheduleId: s.id,
         startTime: s.startTime,
         endTime: s.endTime,
+        doctorId: (s as { doctorId?: number }).doctorId ?? doctorId,
+        doctorName: (s as { doctorName?: string }).doctorName ?? day.doctorName,
       })),
   });
 });

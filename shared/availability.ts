@@ -8,6 +8,9 @@ export interface DatedSlot {
   startTime: string;
   /** "available" when Calq still offers it. */
   status: string;
+  /** Set when slots from several doctors are merged into one grid: which doctor owns it. */
+  doctorId?: number;
+  doctorName?: string;
 }
 
 /** A practice session. A dated Calq answer carries only the ones on that date's weekday. */

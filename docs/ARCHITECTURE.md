@@ -21,6 +21,12 @@
    | Arti "penuh" | tidak ada; hanya "praktik / tidak" | semua slot `status: "booked"` |
    | Nomor antrean | `queue.bookedNumber` terbit saat `POST /appointments` | — |
 
+   Wizard mengikuti pembagian ini, bukan mengikut konfigurasi form: setelah tanggal dipilih,
+   poli antrean menampilkan **dokter yang praktik hari itu** lalu sesinya, sedangkan poli jam
+   langsung menampilkan **grid jam gabungan seluruh dokter** — dokternya ikut dari slot yang
+   diklik dan tidak diperlihatkan (`doctorImplicit`), sehingga blok Pilih Dokter tak lagi
+   ditampilkan. Lihat `picksHourNotDoctor` di web/src/components/wizard/types.ts.
+
    `schedules[]` tak punya field kuota sama sekali (hanya id, medicalPersonnelId, dayOfWeek,
    startTime, endTime, timeZone, roomId, branchId) — jadi untuk poli antrean, "ketersediaan"
    memang cuma bisa berarti *dokternya praktik dan sesinya belum tutup*.

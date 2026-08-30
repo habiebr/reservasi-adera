@@ -6,11 +6,16 @@ import { Calendar } from "@/components/ui/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet, type DoctorOption } from "@/lib/api";
 import SlotList from "./SlotList";
-import type { BlockProps } from "./types";
+import { picksHourNotDoctor, type BlockProps } from "./types";
 
 const fmtDate = (d: Date) => format(d, "yyyy-MM-dd");
 
-export default function SchedulePicker({ slug, block, data, update, dateFirst }: BlockProps) {
+export default function SchedulePicker(
+  { slug, block, data, update, dateFirst, definition }: BlockProps,
+) {
+  // Hour-based poli asked date-first: the grid of hours belongs on this page, not behind a
+  // doctor the patient never asked for.
+  const hourFirst = picksHourNotDoctor(definition, data);
   const maxDaysAhead = block.config.maxDaysAhead ?? 30;
   const timeDisplay = block.config.timeDisplay ?? "segmented";
 
@@ -113,8 +118,8 @@ export default function SchedulePicker({ slug, block, data, update, dateFirst }:
                   visitDate: fmtDate(d),
                   doctorId: undefined,
                   doctorName: undefined,
+                  doctorImplicit: undefined,
                   practiceDays: undefined,
-                  bookingOrderType: undefined,
                   scheduleId: undefined,
                   slotTime: undefined,
                   sessionLabel: undefined,
@@ -153,7 +158,7 @@ export default function SchedulePicker({ slug, block, data, update, dateFirst }:
           <p className="mb-2 text-sm font-semibold text-foreground">
             {format(selectedDate!, "EEEE, d MMMM yyyy", { locale: localeId })}
           </p>
-          {dateFirst
+          {dateFirst && !hourFirst
             ? (
               <p className="text-sm text-muted-foreground">
                 Selanjutnya pilih dokter yang praktik pada tanggal ini.
@@ -163,7 +168,7 @@ export default function SchedulePicker({ slug, block, data, update, dateFirst }:
               <SlotList
                 slug={slug}
                 specializationId={data.specializationId!}
-                doctorId={data.doctorId!}
+                doctorId={hourFirst ? undefined : data.doctorId!}
                 date={data.visitDate}
                 timeDisplay={timeDisplay}
                 data={data}
