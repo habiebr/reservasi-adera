@@ -58,7 +58,7 @@ function carriedRows(
     const tanggal = format(new Date(`${data.visitDate}T12:00:00`), "EEE, d MMM yyyy", {
       locale: localeId,
     });
-    const jam = data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel}` : "");
+    const jam = data.slotTime ?? data.sessionLabel ?? "";
     scheduleRow = { label: "Jadwal", value: jam ? `${tanggal} • ${jam}` : tanggal };
   }
   // Recap the two in the order the patient actually met them.

@@ -207,8 +207,8 @@ function QueueSessions({
             >
               <Users className="h-5 w-5" />
             </span>
-            <span className="text-sm font-semibold text-foreground">
-              Sesi praktik {label}
+            <span className="text-sm font-semibold tabular-nums text-foreground">
+              {label}
             </span>
           </button>
         );

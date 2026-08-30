@@ -13,12 +13,18 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function PatientDataForm({ block, data, update }: BlockProps) {
+export default function PatientDataForm({ block, data, update, definition }: BlockProps) {
   const askAddress = block.config.askAddress ?? true;
   const customFields = block.config.customFields ?? [];
   const p = data.patient;
 
-  if (data.found) return null; // existing patient — nothing to fill
+  // A form that checks NIK first has nothing to ask until that check has run: a blank
+  // registration form sitting beside "Cek NIK" invites the patient to re-register while we
+  // still do not know whether the clinic already has them. Found → nothing to fill either.
+  const hasLookup = definition.pages.some((page) =>
+    page.blocks.some((b) => b.kind === "patient_lookup" && b.enabled)
+  );
+  if (data.found || (hasLookup && !data.lookupDone)) return null;
 
   const setP = (patch: Partial<typeof p>) => update({ patient: { ...p, ...patch } });
 

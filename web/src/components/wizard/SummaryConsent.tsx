@@ -104,7 +104,7 @@ export default function SummaryConsent({ slug, block, data, update }: BlockProps
           <Field label="Tanggal" value={tanggal} />
           <Field
             label="Jam"
-            value={data.slotTime ?? (data.sessionLabel ? `Sesi ${data.sessionLabel}` : "-")}
+            value={data.slotTime ?? data.sessionLabel ?? "-"}
           />
         </dl>
       </section>
