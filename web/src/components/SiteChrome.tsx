@@ -101,7 +101,10 @@ export default function SiteChrome({
             <img src="/logo-adera.webp?v=1" alt="Klinik Adera" className="h-7 w-auto opacity-75" />
           </a>
           <p className="text-center text-xs text-muted-foreground">
-            © 2026 PT Keluarga Sehat Adera. Terdaftar di Kemenkes RI.
+            © 2026 PT Keluarga Sehat Adera. Terdaftar di Kemenkes RI.{" "}
+            {/* Which build this tab is actually running — a stale shell is otherwise
+                indistinguishable from a deploy that never happened. */}
+            <span className="opacity-40">v{__BUILD_ID__}</span>
           </p>
           <a
             href={WA_URL}
