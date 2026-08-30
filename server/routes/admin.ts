@@ -259,11 +259,13 @@ adminRoutes.get("/bookings", async (c) => {
   const page = Math.max(1, Number(c.req.query("page")) || 1);
   const pageSize = 25;
   const status = c.req.query("status") ?? "";
-  const formId = c.req.query("form_id") ?? "";
+  // Empty means "no filter". It has to reach Postgres as a real NULL, not "": an OR
+  // guard does not stop the planner from evaluating ''::uuid, which throws 22P02.
+  const formId = c.req.query("form_id") || null;
 
   const where = sql`
     WHERE (${status} = '' OR b.status = ${status})
-      AND (${formId} = '' OR b.form_id = ${formId}::uuid)`;
+      AND (${formId}::uuid IS NULL OR b.form_id = ${formId}::uuid)`;
   const [{ count }] = await sql`SELECT count(*)::int AS count FROM bookings b ${where}`;
   const rows = await sql`
     SELECT b.id, b.status, b.visit_date, b.slot_time, b.booking_order_type,
