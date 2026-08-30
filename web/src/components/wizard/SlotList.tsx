@@ -3,7 +3,6 @@
 // Jadwal" (the doctor is already known), date-first forms show it inside "Pilih Dokter"
 // (the date is already known). Calq only quotes slots once both are pinned down.
 import { useEffect, useState } from "react";
-import { Users } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -176,8 +175,11 @@ function QueueSessions({
       </p>
     );
   }
+  // Same shape as the hour grid: a session is a time to pick, so it reads as one. Full-width
+  // rows with an avatar-sized icon cost a phone screen's whole height for two choices.
+  // Two columns, not three — a session is a range ("08:00 – 16:00"), twice as wide as an hour.
   return (
-    <div className="space-y-2">
+    <div role="radiogroup" aria-label="Pilihan sesi" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {slots.sessions.map((s) => {
         const selected = data.scheduleId === s.scheduleId;
         const label = `${s.startTime} – ${s.endTime}`;
@@ -185,6 +187,8 @@ function QueueSessions({
           <button
             key={s.scheduleId}
             type="button"
+            role="radio"
+            aria-checked={selected}
             onClick={() =>
               update({
                 scheduleId: s.scheduleId,
@@ -193,23 +197,13 @@ function QueueSessions({
                 ...doctorOf(s),
               })}
             className={cn(
-              "flex w-full items-center gap-3 rounded-xl border-2 p-4 text-left transition-all",
+              "flex h-11 items-center justify-center rounded-lg border-2 text-sm font-medium tabular-nums transition-all",
               selected
-                ? "border-primary bg-primary-muted"
-                : "border-border bg-card hover:border-primary/60",
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-foreground hover:border-primary/60",
             )}
           >
-            <span
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                selected ? "bg-primary text-primary-foreground" : "bg-secondary text-primary",
-              )}
-            >
-              <Users className="h-5 w-5" />
-            </span>
-            <span className="text-sm font-semibold tabular-nums text-foreground">
-              {label}
-            </span>
+            {label}
           </button>
         );
       })}

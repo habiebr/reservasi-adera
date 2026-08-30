@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
-import { Clock, Search, UserRound } from "lucide-react";
+import { Search, UserRound } from "lucide-react";
 import { apiGet, type DoctorOption } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -186,9 +186,7 @@ export default function DoctorPicker(
               the date and the doctor are known, which is all Calq needs to quote slots. */}
           {dateFirst && selected && data.visitDate && (
             <div className="mt-3 rounded-xl border border-border bg-secondary/30 p-4">
-              <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Clock className="h-4 w-4 text-primary" /> Pilih jam kunjungan
-              </p>
+              <p className="mb-3 text-sm font-semibold text-foreground">Pilih jam kunjungan</p>
               <SlotList
                 slug={slug}
                 specializationId={data.specializationId!}
