@@ -27,9 +27,16 @@ function displayDob(dob: string): string {
 export default function PatientLookup({ slug, block, data, update }: BlockProps) {
   const allowMrn = block.config.allowMrn ?? true;
   const modes: Mode[] = allowMrn ? ["nik", "mrn"] : ["nik"];
-  const [mode, setMode] = useState<Mode>("nik");
-  const [value, setValue] = useState("");
-  const [dob, setDob] = useState("");
+  const [mode, setMode] = useState<Mode>(() =>
+    allowMrn && !data.patient.nik && data.patient.mrn ? "mrn" : "nik"
+  );
+  // Seeded from the answer already in hand. The wizard keeps its draft across a reload, so a
+  // result would otherwise come back with the boxes blank — a verdict about a NIK nobody can
+  // see, which reads exactly like a verdict handed down before anything was checked.
+  const [value, setValue] = useState(() =>
+    data.lookupDone ? (data.patient.mrn && !data.patient.nik ? data.patient.mrn : data.patient.nik) : ""
+  );
+  const [dob, setDob] = useState(() => (data.lookupDone ? data.patient.tanggal_lahir : ""));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -131,8 +138,10 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
             maxLength={mode === "nik" ? 16 : 20}
             placeholder={PLACEHOLDER[mode]}
             value={value}
-            onChange={(e) =>
-              setValue(mode === "nik" ? e.target.value.replace(/\D/g, "") : e.target.value)}
+            onChange={(e) => {
+              setValue(mode === "nik" ? e.target.value.replace(/\D/g, "") : e.target.value);
+              if (data.lookupDone) searchAgain(); // hasil lama tak boleh menempel pada isian baru
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") run();
             }}
@@ -143,7 +152,13 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <Label>Tanggal lahir</Label>
-          <DateSegments value={dob} onChange={setDob} />
+          <DateSegments
+            value={dob}
+            onChange={(v) => {
+              setDob(v);
+              if (data.lookupDone) searchAgain();
+            }}
+          />
         </div>
         <Button onClick={run} disabled={loading} className="h-11 px-6">
           {loading ? "Memeriksa…" : "Cek"}
@@ -229,8 +244,8 @@ export default function PatientLookup({ slug, block, data, update }: BlockProps)
           <div>
             <p className="text-sm font-semibold text-foreground">Data tidak ditemukan</p>
             <p className="text-xs text-muted-foreground">
-              Pastikan {LABEL[mode]} dan tanggal lahir sudah benar, atau lengkapi data diri di bawah
-              untuk mendaftar sebagai pasien baru.
+              Pastikan {LABEL[mode]} dan tanggal lahir sudah benar, atau tekan Lanjut untuk
+              mendaftar sebagai pasien baru.
             </p>
           </div>
         </div>
