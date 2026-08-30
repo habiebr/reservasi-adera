@@ -34,6 +34,24 @@ if (frameAncestors) {
   console.log(`embed allowed from: ${embedOrigins.join(", ")}`);
 }
 
+/**
+ * Cache rules for the SPA. index.html went out with no Cache-Control, no ETag and no
+ * Last-Modified at all, which leaves browsers free to hold on to it — and a stale shell
+ * points at a stale hashed bundle, so a deployed fix can keep not existing for whoever
+ * already had the page. The shell must therefore be revalidated every time.
+ *
+ * Its assets are the opposite: Vite stamps a content hash into every filename, so a given
+ * URL can never change meaning and may be kept for a year.
+ */
+app.use("*", async (c, next) => {
+  await next();
+  if (c.req.path.startsWith("/assets/")) {
+    c.res.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  } else if ((c.res.headers.get("content-type") ?? "").includes("text/html")) {
+    c.res.headers.set("Cache-Control", "no-cache");
+  }
+});
+
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api", publicRoutes);
 app.route("/api/booking", bookingRoutes);
