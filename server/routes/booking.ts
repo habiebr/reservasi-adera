@@ -27,7 +27,13 @@ import {
 import { amountDue, dpAmount, totalAmount, type PricedItem } from "@shared/pricing.ts";
 import { groupBookingItemRows, listBundles, priceBundles } from "../bundles.ts";
 import { runEmrSync } from "../emrSync.ts";
-import { addDays, type AppointmentQueueView, civilDate, clinicToday } from "@shared/queue.ts";
+import {
+  addDays,
+  type AppointmentQueueView,
+  civilDate,
+  clinicToday,
+  samePerson,
+} from "@shared/queue.ts";
 
 /** A charge line as stored: always one row per underlying Calq procedure, remembering the
  * bundle (paket) it came from so summaries can regroup it. */
@@ -594,6 +600,7 @@ bookingRoutes.post("/antrean", async (c) => {
       ? patient.id
       : null;
     if (patientId) calqName = [patient!.firstName, patient!.lastName].filter(Boolean).join(" ");
+    const me = patientId ? { id: patientId, name: calqName, dob } : null;
 
     const withAppt = rows.filter((r) => r.appointment_id);
     const knownAppts = new Set(withAppt.map((r) => Number(r.appointment_id)));
@@ -626,10 +633,10 @@ bookingRoutes.post("/antrean", async (c) => {
                  updated_at = now()
           WHERE booking_id = ${r.id}`;
       }
-      if (!patientId) return;
+      if (!me) return;
       for (const v of day.values()) {
         // A cancelled front-desk queue is the clinic's business, not a visit to announce.
-        if (v.patientId !== patientId || knownAppts.has(v.appointmentId)) continue;
+        if (!samePerson(v, me) || knownAppts.has(v.appointmentId)) continue;
         if (v.queueStatus === "CANCELLED") continue;
         walkIns.push(v);
       }

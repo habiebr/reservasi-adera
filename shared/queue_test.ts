@@ -1,6 +1,6 @@
 // deno test shared/
 import { assertEquals } from "jsr:@std/assert@1";
-import { addDays, civilDate, clinicToday, indexDayQueues } from "./queue.ts";
+import { addDays, civilDate, clinicToday, indexDayQueues, samePerson } from "./queue.ts";
 
 // Shape captured from the sandbox on 2026-09-23 after check-in + "next" on doctor 4.
 const day = [
@@ -30,7 +30,12 @@ const day = [
             id: 21198,
             date: "2026-09-23",
             entryType: "WALK_IN",
-            patient: { id: 78352, firstName: "Tes", lastName: "Reservasi Adera" },
+            patient: {
+              id: 78352,
+              firstName: "Tes",
+              lastName: "Reservasi Adera",
+              dateOfBirth: "1995-05-05",
+            },
             specialization: { id: 42, name: "Bidan" },
             queue: { id: 20559, bookedNumber: 2, status: "CHECKED_IN", activeQueue: true },
           },
@@ -73,6 +78,8 @@ Deno.test("own number, status and the number being served come from the doctor's
   assertEquals(idx.get(21199), {
     appointmentId: 21199,
     patientId: 5,
+    patientName: null,
+    patientDob: null,
     date: "2026-09-23",
     doctorName: "Bidan etika",
     specializationName: "Bidan",
@@ -147,4 +154,19 @@ Deno.test("clinicToday follows Jakarta, addDays crosses month ends", () => {
   assertEquals(clinicToday(new Date("2026-09-23T16:30:00Z")), "2026-09-23");
   assertEquals(addDays("2026-09-30", 1), "2026-10-01");
   assertEquals(addDays("2026-09-23", 6), "2026-09-29");
+});
+
+Deno.test("samePerson: id match, or same name + birth date for a merged duplicate record", () => {
+  const v = indexDayQueues(day).get(21198)!;
+  assertEquals(v.patientName, "Tes Reservasi Adera");
+  assertEquals(v.patientDob, "1995-05-05");
+  assertEquals(samePerson(v, { id: 78352, name: "Someone Else", dob: "1990-01-01" }), true);
+  assertEquals(
+    samePerson(v, { id: 55157, name: "tes reservasi adera", dob: "1995-05-05" }),
+    true,
+  );
+  assertEquals(samePerson(v, { id: 55157, name: "Tes Reservasi Adera", dob: "1995-05-06" }), false);
+  assertEquals(samePerson(v, { id: 55157, name: "Tes Reservasi", dob: "1995-05-05" }), false);
+  const anon = indexDayQueues(day).get(21199)!;
+  assertEquals(samePerson(anon, { id: 9, name: "x", dob: "1995-05-05" }), false);
 });

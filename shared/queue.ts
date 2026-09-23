@@ -18,7 +18,12 @@ export interface CalqDayAppointment {
   id: number;
   date?: string;
   entryType?: string | null; // SCHEDULED | WALK_IN
-  patient?: { id: number; firstName?: string | null; lastName?: string | null } | null;
+  patient?: {
+    id: number;
+    firstName?: string | null;
+    lastName?: string | null;
+    dateOfBirth?: string | null;
+  } | null;
   specialization?: { id: number; name: string } | null;
   queue?: CalqQueueRef | null;
   checkInTime?: string | null;
@@ -50,6 +55,9 @@ export interface CalqDayDoctor {
 export interface AppointmentQueueView {
   appointmentId: number;
   patientId: number | null;
+  /** Name and birth date as the appointment carries them — see samePerson. */
+  patientName: string | null;
+  patientDob: string | null;
   /** Civil date of the visit (YYYY-MM-DD), as Calq reports it. */
   date: string | null;
   doctorName: string | null;
@@ -102,6 +110,10 @@ export function indexDayQueues(doctors: CalqDayDoctor[]): Map<number, Appointmen
           ...base,
           appointmentId: a.id,
           patientId: a.patient?.id ?? null,
+          patientName: text(
+            [a.patient?.firstName, a.patient?.lastName].filter(Boolean).join(" "),
+          ),
+          patientDob: text(a.patient?.dateOfBirth)?.slice(0, 10) ?? null,
           date: text(a.date),
           specializationName: text(a.specialization?.name),
           sessionStart: text(s.startTime),
@@ -140,4 +152,24 @@ export function addDays(date: string, n: number): string {
   const d = new Date(`${date}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+const nameKey = (s: string | null | undefined) =>
+  (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Whether a day-view appointment belongs to the patient the NIK resolved to. The id is the
+ * normal match. The name + birth date match covers a front-desk duplicate: the clinic
+ * registers a visit under a fresh record, later merges it into the older record, and the
+ * visit keeps pointing at the now soft-deleted id, which no NIK search can reach any more
+ * (seen in production 2026-09-23). Both records carry the same person's name and birth
+ * date, and the birth date is the same second factor the whole endpoint rests on.
+ */
+export function samePerson(
+  v: { patientId: number | null; patientName: string | null; patientDob: string | null },
+  patient: { id: number; name: string | null; dob: string | null },
+): boolean {
+  if (v.patientId != null && v.patientId === patient.id) return true;
+  if (!patient.dob || !patient.name || !v.patientDob || !v.patientName) return false;
+  return v.patientDob === patient.dob && nameKey(v.patientName) === nameKey(patient.name);
 }
