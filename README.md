@@ -98,7 +98,7 @@ ulang — cookie sesi terikat pada host.
 | `/{slug}` | Publik | Wizard reservasi hasil builder |
 | `/{slug}?embed=1` | Publik | Wizard tanpa chrome situs, untuk disematkan lewat iframe |
 | `/{slug}/status?invoice=` | Publik | Status bayar → kode booking, antrean, invoice |
-| `/antrean` | Publik | Cek nomor antrean lewat NIK + tanggal lahir (status check-in dan nomor yang sedang dipanggil dibaca langsung dari Calq), untuk yang kehilangan tautan status |
+| `/antrean` | Publik | Cek nomor antrean lewat NIK + tanggal lahir — reservasi dari sini maupun pendaftaran langsung di loket (walk-in) dibaca dari Calq, termasuk status check-in dan nomor yang sedang dipanggil |
 | `/admin` | Admin | Form (builder DnD), Reservasi, Dokter & Jadwal (read-only Calq), Gagal Bayar, Pengaturan |
 | `/admin/forms/:id` | Admin | Editor tiga panel: palet blok · kanvas halaman · konfigurasi + pratinjau HP |
 

@@ -27,7 +27,7 @@ import {
 import { amountDue, dpAmount, totalAmount, type PricedItem } from "@shared/pricing.ts";
 import { groupBookingItemRows, listBundles, priceBundles } from "../bundles.ts";
 import { runEmrSync } from "../emrSync.ts";
-import { type AppointmentQueueView, civilDate } from "@shared/queue.ts";
+import { addDays, type AppointmentQueueView, civilDate, clinicToday } from "@shared/queue.ts";
 
 /** A charge line as stored: always one row per underlying Calq procedure, remembering the
  * bundle (paket) it came from so summaries can regroup it. */
@@ -526,6 +526,9 @@ bookingRoutes.get("/status", async (c) => {
   });
 });
 
+/** How many days past today a front-desk registration is looked for in Calq. */
+const WALK_IN_LOOKAHEAD_DAYS = 6;
+
 /**
  * Cek Antrean: NIK + tanggal lahir → this patient's upcoming visits and their queue numbers.
  *
@@ -534,6 +537,13 @@ bookingRoutes.get("/status", async (c) => {
  * endpoint cannot be used to test whether a NIK has ever booked. The reply is masked for the
  * same reason — it is an unauthenticated surface, so it carries only what the owner needs to
  * recognise their own visit.
+ *
+ * Two sources, merged by Calq appointment id:
+ *  1. bookings made here (bookings + booking_emr), whose number and status are refreshed;
+ *  2. visits registered straight at the front desk in Calq (walk-ins), which have no row
+ *     here at all. The NIK is resolved to a Calq patient (exact match) and the birth date
+ *     must equal Calq's own record — the same second factor — then the patient's
+ *     appointments are read from the per-day view for today and the next few days.
  */
 bookingRoutes.post("/antrean", async (c) => {
   const ip = c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for") ?? "local";
@@ -567,21 +577,41 @@ bookingRoutes.post("/antrean", async (c) => {
      ORDER BY b.visit_date, b.slot_time NULLS FIRST
      LIMIT 5`;
 
-  if (rows.length === 0) return c.json({ found: false });
-
   // The stored number is a snapshot from the moment the appointment was created. Re-read it
   // so a patient who has since been called sees CHECKED_IN rather than a stale BOOKED, and
   // learn which number the doctor is calling right now. Calq only reports queues per day
-  // (see getDayQueues), so fetch each visit date once and share it across that day's rows.
+  // (see getDayQueues), so each date is fetched once and shared by everything on that day.
   // Calq being unreachable must not break the page: every failure falls back to what we
-  // stored, and the live-only fields stay null.
+  // stored, the live-only fields stay null, and walk-ins simply do not appear.
   const creds = await loadCalqCreds().catch(() => null);
-  const live = new Map<string, AppointmentQueueView>();
+  const live = new Map<string, AppointmentQueueView>(); // by booking id
+  const walkIns: AppointmentQueueView[] = [];
+  let calqName: string | null = null;
+
   if (creds) {
+    const patient = await findCalqPatientByNik(creds, nik).catch(() => null);
+    const patientId = patient && (patient.dateOfBirth ?? "").slice(0, 10) === dob
+      ? patient.id
+      : null;
+    if (patientId) calqName = [patient!.firstName, patient!.lastName].filter(Boolean).join(" ");
+
     const withAppt = rows.filter((r) => r.appointment_id);
-    const dates = [...new Set(withAppt.map((r) => civilDate(r.visit_date)))];
-    await Promise.all(dates.map(async (date) => {
-      const day = await getDayQueues(creds, date).catch(() => null);
+    const knownAppts = new Set(withAppt.map((r) => Number(r.appointment_id)));
+    // Today is read unfiltered: "now serving" needs every queue of the day. Later days only
+    // matter for this patient's own rows, so they are filtered to keep the payload small.
+    const plan = new Map<string, { patientId?: number }>();
+    for (const r of withAppt) plan.set(civilDate(r.visit_date), {});
+    if (patientId) {
+      const today = clinicToday();
+      plan.set(today, {});
+      for (let i = 1; i <= WALK_IN_LOOKAHEAD_DAYS; i++) {
+        const d = addDays(today, i);
+        if (!plan.has(d)) plan.set(d, { patientId });
+      }
+    }
+
+    await Promise.all([...plan].map(async ([date, opts]) => {
+      const day = await getDayQueues(creds, date, opts).catch(() => null);
       if (!day) return;
       for (const r of withAppt) {
         if (civilDate(r.visit_date) !== date) continue;
@@ -596,15 +626,26 @@ bookingRoutes.post("/antrean", async (c) => {
                  updated_at = now()
           WHERE booking_id = ${r.id}`;
       }
+      if (!patientId) return;
+      for (const v of day.values()) {
+        // A cancelled front-desk queue is the clinic's business, not a visit to announce.
+        if (v.patientId !== patientId || knownAppts.has(v.appointmentId)) continue;
+        if (v.queueStatus === "CANCELLED") continue;
+        walkIns.push(v);
+      }
     }));
   }
 
-  return c.json({
-    found: true,
-    masked_name: maskName(String(rows[0].nama_lengkap ?? "")),
-    visits: rows.map((r) => ({
+  if (rows.length === 0 && walkIns.length === 0) return c.json({ found: false });
+
+  const visits = [
+    ...rows.map((r) => ({
+      source: "reservasi" as const,
+      sort_key: `${civilDate(r.visit_date)} ${r.slot_time ?? ""}`,
       visit_date: r.visit_date,
       slot_time: r.slot_time,
+      session_start: null,
+      session_end: null,
       booking_order_type: r.booking_order_type,
       booking_status: r.booking_status,
       payment_status: r.payment_status,
@@ -620,6 +661,34 @@ bookingRoutes.post("/antrean", async (c) => {
       room_name: live.get(String(r.id))?.roomName ?? null,
       registered: r.sync_status === "REGISTERED",
     })),
+    ...walkIns.map((v) => ({
+      source: "calq" as const,
+      sort_key: `${v.date ?? ""} ${v.sessionStart ?? ""}`,
+      visit_date: v.date,
+      slot_time: null,
+      session_start: v.sessionStart,
+      session_end: v.sessionEnd,
+      booking_order_type: null,
+      booking_status: "CONFIRMED",
+      payment_status: null,
+      doctor_name: v.doctorName,
+      specialization_name: v.specializationName,
+      polyclinic_name: null,
+      booking_code: null,
+      queue_number: v.queueNumber,
+      queue_status: v.queueStatus,
+      queue_prefix: v.queuePrefix,
+      now_serving: v.nowServing,
+      queue_open: v.queueOpen,
+      room_name: v.roomName,
+      registered: true,
+    })),
+  ].sort((a, b) => a.sort_key.localeCompare(b.sort_key));
+
+  return c.json({
+    found: true,
+    masked_name: maskName(String(rows[0]?.nama_lengkap ?? calqName ?? "")),
+    visits: visits.map(({ sort_key: _sort, ...v }) => v),
   });
 });
 

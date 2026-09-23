@@ -13,8 +13,13 @@ import SiteChrome from "@/components/SiteChrome";
 import { apiPost } from "@/lib/api";
 
 interface Visit {
+  /** "reservasi" = booked here; "calq" = registered at the front desk, found in Calq only. */
+  source: "reservasi" | "calq";
   visit_date: string;
   slot_time: string | null;
+  /** Practice session of a front-desk registration (queue polis have no slot). */
+  session_start: string | null;
+  session_end: string | null;
   booking_order_type: string | null;
   booking_status: string | null;
   payment_status: string | null;
@@ -121,8 +126,15 @@ export default function QueueCheck() {
               <p className="text-xs text-muted-foreground">
                 {v.polyclinic_name ?? v.specialization_name ?? "-"}
                 {v.doctor_name ? ` · ${v.doctor_name}` : ""}
-                {v.slot_time ? ` · ${v.slot_time}` : ""}
+                {v.slot_time
+                  ? ` · ${v.slot_time}`
+                  : v.session_start
+                    ? ` · sesi ${v.session_start}–${v.session_end ?? ""}`
+                    : ""}
               </p>
+              {v.source === "calq" && (
+                <p className="mt-1 text-[11px] text-muted-foreground">Didaftarkan di klinik.</p>
+              )}
 
               {v.queue_number ? (
                 <div className="mt-3 flex items-center justify-center gap-6 rounded-lg bg-primary p-3 text-primary-foreground">
@@ -146,7 +158,9 @@ export default function QueueCheck() {
                 // No number is the normal case for an EXACT_TIME poli, and the temporary case
                 // for a queue poli whose EMR registration has not landed yet. Say which.
                 <p className="mt-3 rounded-lg bg-info/5 p-3 text-xs text-muted-foreground">
-                  {v.booking_order_type === "EXACT_TIME"
+                  {v.source === "calq"
+                    ? "Kunjungan ini terdaftar di klinik tanpa nomor antrean (poli jam janji)."
+                    : v.booking_order_type === "EXACT_TIME"
                     ? "Poli ini memakai jam janji, jadi tidak memakai nomor antrean. Datanglah sesuai jam di atas."
                     : v.payment_status === "PAID"
                       ? "Nomor antrean belum terbit. Muat ulang halaman ini sebentar lagi."

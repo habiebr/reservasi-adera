@@ -414,18 +414,23 @@ export interface CalqAppointment {
  * status — GET /appointments/{id} omits `queue` entirely (probed 2026-09-23), which is why
  * the earlier per-appointment re-read never updated anything.
  *
- * `date` is unlike the ignored `GET /appointments?date=` filter: /v2 honours it. Rows are
- * per doctor (~30 in the sandbox), so a page of 100 is normally the whole day; keep paging
- * while a page comes back full, bounded so a misbehaving filter cannot loop forever.
+ * `date` is unlike the ignored `GET /appointments?date=` filter: /v2 honours it, and it
+ * honours `patientId` too (positive and negative control probed 2026-09-23). Filtering by
+ * patient drops every other patient's queue from the rows, and with them the queue the
+ * doctor is currently calling — so only filter days where "now serving" does not matter.
+ * Rows are per doctor (~30 in the sandbox), so a page of 100 is normally the whole day;
+ * keep paging while a page comes back full, bounded so a bad filter cannot loop forever.
  */
 export async function getDayQueues(
   creds: CalqCreds,
   date: string,
+  opts: { patientId?: number } = {},
 ): Promise<Map<number, AppointmentQueueView>> {
   const pageSize = 100;
   const doctors: CalqDayDoctor[] = [];
   for (let page = 1; page <= 5; page++) {
     const qs = new URLSearchParams({ date, page: String(page), pageSize: String(pageSize) });
+    if (opts.patientId) qs.set("patientId", String(opts.patientId));
     const data = await calqGet(creds, `/appointments/v2?${qs}`);
     const rows = Array.isArray(data) ? data as CalqDayDoctor[] : [];
     doctors.push(...rows);

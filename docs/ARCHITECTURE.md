@@ -84,6 +84,11 @@
     `BOOKED → CHECKED_IN` (`POST /appointments/{id}/check-in`, kirim tanpa header
     Content-Type bila tanpa body), `activeQueue: true` saat dipanggil
     (`POST /daily-queues/{id}/next`), `CANCELLED` (`PATCH /queues/{id}/cancel`).
+    `/v2` juga MENGHORMATI `patientId=` (kontrol positif/negatif diuji) — dipakai Cek Antrean
+    untuk menemukan **walk-in** (pendaftaran langsung di loket, tak punya baris di sini):
+    NIK → `GET /patients?search=` (cocok persis) → `dateOfBirth` harus sama dengan yang
+    diketik → `/v2?date=&patientId=` untuk hari ini + 6 hari. Hari ini dibaca tanpa filter
+    karena "sedang dipanggil" butuh seluruh antrean hari itu.
     `currentQueueId` bisa tetap menunjuk antrean yang sudah dibatalkan — selalu resolusikan
     lewat daftar appointment (`shared/queue.ts`). Siaran langsung: SSE
     `GET /appointments/queue/stream` (hari ini saja; `/v2` = 404), `GET /rooms/{id}/queue-display[/stream]`,
