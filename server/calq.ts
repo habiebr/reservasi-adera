@@ -3,6 +3,11 @@
 // the live sandbox (see docs/ARCHITECTURE.md): the swagger DTO for POST /appointments is
 // misleading — the shapes below are the authoritative, probe-confirmed ones.
 import { appSettings } from "./db.ts";
+import {
+  type AppointmentQueueView,
+  type CalqDayDoctor,
+  indexDayQueues,
+} from "@shared/queue.ts";
 
 export interface CalqCreds {
   baseUrl: string;
@@ -390,7 +395,43 @@ export interface CalqAppointment {
   specializationId: number;
   bookingCode: string | null;
   paymentStatus: string | null;
-  queue?: { bookedNumber: number; status: string } | null;
+  /**
+   * Present on the POST /appointments reply only — GET /appointments/{id} never carries it.
+   * Re-read the number and its status through getDayQueues.
+   */
+  queue?: {
+    id?: number;
+    bookedNumber: number | null;
+    status: string;
+    dailyQueueId?: number;
+    queuePrefix?: string | null;
+  } | null;
+}
+
+/**
+ * Every queue of one day, keyed by appointment id: the patient's number and status plus the
+ * number the doctor is currently calling. This is the only Calq read that reports queue
+ * status — GET /appointments/{id} omits `queue` entirely (probed 2026-09-23), which is why
+ * the earlier per-appointment re-read never updated anything.
+ *
+ * `date` is unlike the ignored `GET /appointments?date=` filter: /v2 honours it. Rows are
+ * per doctor (~30 in the sandbox), so a page of 100 is normally the whole day; keep paging
+ * while a page comes back full, bounded so a misbehaving filter cannot loop forever.
+ */
+export async function getDayQueues(
+  creds: CalqCreds,
+  date: string,
+): Promise<Map<number, AppointmentQueueView>> {
+  const pageSize = 100;
+  const doctors: CalqDayDoctor[] = [];
+  for (let page = 1; page <= 5; page++) {
+    const qs = new URLSearchParams({ date, page: String(page), pageSize: String(pageSize) });
+    const data = await calqGet(creds, `/appointments/v2?${qs}`);
+    const rows = Array.isArray(data) ? data as CalqDayDoctor[] : [];
+    doctors.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return indexDayQueues(doctors);
 }
 
 /**

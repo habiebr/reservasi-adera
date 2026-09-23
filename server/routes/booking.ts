@@ -7,7 +7,7 @@ import {
   createCalqPatient,
   findCalqPatientByMrn,
   findCalqPatientByNik,
-  getAppointment,
+  getDayQueues,
   getDoctorDaySlots,
   getProcedures,
   loadCalqCreds,
@@ -27,6 +27,7 @@ import {
 import { amountDue, dpAmount, totalAmount, type PricedItem } from "@shared/pricing.ts";
 import { groupBookingItemRows, listBundles, priceBundles } from "../bundles.ts";
 import { runEmrSync } from "../emrSync.ts";
+import { type AppointmentQueueView, civilDate } from "@shared/queue.ts";
 
 /** A charge line as stored: always one row per underlying Calq procedure, remembering the
  * bundle (paket) it came from so summaries can regroup it. */
@@ -569,24 +570,33 @@ bookingRoutes.post("/antrean", async (c) => {
   if (rows.length === 0) return c.json({ found: false });
 
   // The stored number is a snapshot from the moment the appointment was created. Re-read it
-  // so a patient who has since been called sees CHECKED_IN rather than a stale BOOKED. Calq
-  // being unreachable must not break the page, so every failure falls back to what we stored.
+  // so a patient who has since been called sees CHECKED_IN rather than a stale BOOKED, and
+  // learn which number the doctor is calling right now. Calq only reports queues per day
+  // (see getDayQueues), so fetch each visit date once and share it across that day's rows.
+  // Calq being unreachable must not break the page: every failure falls back to what we
+  // stored, and the live-only fields stay null.
   const creds = await loadCalqCreds().catch(() => null);
+  const live = new Map<string, AppointmentQueueView>();
   if (creds) {
-    await Promise.all(
-      rows.filter((r) => r.appointment_id).map(async (r) => {
-        const appt = await getAppointment(creds, String(r.appointment_id)).catch(() => null);
-        if (!appt?.queue) return;
-        const num = appt.queue.bookedNumber != null ? String(appt.queue.bookedNumber) : null;
-        const st = appt.queue.status ?? null;
-        if (num === r.queue_number && st === r.queue_status) return;
-        r.queue_number = num;
-        r.queue_status = st;
+    const withAppt = rows.filter((r) => r.appointment_id);
+    const dates = [...new Set(withAppt.map((r) => civilDate(r.visit_date)))];
+    await Promise.all(dates.map(async (date) => {
+      const day = await getDayQueues(creds, date).catch(() => null);
+      if (!day) return;
+      for (const r of withAppt) {
+        if (civilDate(r.visit_date) !== date) continue;
+        const q = day.get(Number(r.appointment_id));
+        if (!q) continue;
+        live.set(String(r.id), q);
+        if (q.queueNumber === r.queue_number && q.queueStatus === r.queue_status) continue;
+        r.queue_number = q.queueNumber;
+        r.queue_status = q.queueStatus;
         await sql`
-          UPDATE booking_emr SET queue_number = ${num}, queue_status = ${st}, updated_at = now()
+          UPDATE booking_emr SET queue_number = ${q.queueNumber}, queue_status = ${q.queueStatus},
+                 updated_at = now()
           WHERE booking_id = ${r.id}`;
-      }),
-    );
+      }
+    }));
   }
 
   return c.json({
@@ -604,6 +614,10 @@ bookingRoutes.post("/antrean", async (c) => {
       booking_code: r.booking_code,
       queue_number: r.queue_number,
       queue_status: r.queue_status,
+      queue_prefix: live.get(String(r.id))?.queuePrefix ?? null,
+      now_serving: live.get(String(r.id))?.nowServing ?? null,
+      queue_open: live.get(String(r.id))?.queueOpen ?? null,
+      room_name: live.get(String(r.id))?.roomName ?? null,
       registered: r.sync_status === "REGISTERED",
     })),
   });

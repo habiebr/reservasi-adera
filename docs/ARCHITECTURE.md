@@ -1,6 +1,6 @@
 # Arsitektur & Temuan API Calq
 
-> Verifikasi terakhir: 2026-08-23, terhadap sandbox Calq `simrs-adera-dev-local.techave.dev`.
+> Verifikasi terakhir: 2026-09-23 (antrean, host produksi); selebihnya 2026-08-23 — terhadap sandbox Calq `simrs-adera-dev-local.techave.dev`.
 > OpenAPI lengkap: `GET {base}/api/docs-json` (Swagger UI di `/api/docs`).
 
 ## Temuan API Calq yang menjadi dasar desain (semua diverifikasi live)
@@ -73,6 +73,24 @@
     invoice kosong membuat Calq menandai invoice Rp0 PAID), dan **sale berstatus PAID tidak
     boleh di-PATCH/dibayar lagi** (isFullyPaid guard).
 12. `dayOfWeek` Calq = `Date.getDay()` JS (Minggu = 0).
+13. **Antrean (diverifikasi 2026-09-23, sandbox):** nomor hanya terbit di balasan
+    `POST /appointments` (`queue: {id, bookedNumber, status: BOOKED, dailyQueueId,
+    queuePrefix}`). ⚠️ `GET /appointments/{id}` **tidak membawa `queue` sama sekali** (hanya
+    `queueNumberBpjs`) — pembacaan ulang per-appointment tidak pernah memperbarui apa pun.
+    Yang benar: `GET /appointments/v2?date=YYYY-MM-DD&page=&pageSize=` (filter `date` ini
+    DIHORMATI) → satu baris per dokter: `queuePrefix`, `dailyQueue {status, currentQueueId,
+    nextQueueId, roomId, room}`, `queueSummary {totalQueues, completedQueues}`, dan
+    `schedules[].appointments[].queue {id, bookedNumber, status, activeQueue}`. Status:
+    `BOOKED → CHECKED_IN` (`POST /appointments/{id}/check-in`, kirim tanpa header
+    Content-Type bila tanpa body), `activeQueue: true` saat dipanggil
+    (`POST /daily-queues/{id}/next`), `CANCELLED` (`PATCH /queues/{id}/cancel`).
+    `currentQueueId` bisa tetap menunjuk antrean yang sudah dibatalkan — selalu resolusikan
+    lewat daftar appointment (`shared/queue.ts`). Siaran langsung: SSE
+    `GET /appointments/queue/stream` (hari ini saja; `/v2` = 404), `GET /rooms/{id}/queue-display[/stream]`,
+    `GET /rooms/kiosk-display?branchId=[/stream]` — baru terisi bila dailyQueue punya room.
+14. **Host produksi:** API Calq produksi yang hidup adalah `https://backend.klinikadera.co.id`
+    (swarm `calq_*` di adera-fe). `api-calq.klinikadera.co.id` menunjuk ke server lama
+    techave dan menjawab 503 (dicek 2026-09-23 dari mesin dev maupun dari host reservasi).
 
 ## Urutan tulis-balik setelah DOKU PAID (`server/emrSync.ts`)
 

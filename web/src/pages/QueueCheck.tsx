@@ -24,6 +24,11 @@ interface Visit {
   booking_code: string | null;
   queue_number: string | null;
   queue_status: string | null;
+  /** Live from Calq at request time; null when Calq could not be reached. */
+  queue_prefix: string | null;
+  now_serving: string | null;
+  queue_open: boolean | null;
+  room_name: string | null;
   registered: boolean;
 }
 interface Result {
@@ -131,7 +136,10 @@ export default function QueueCheck() {
                   )}
                   <div className="text-center">
                     <p className="text-[11px] uppercase tracking-wide opacity-80">No. Antrean</p>
-                    <p className="font-mono text-2xl font-bold">{v.queue_number}</p>
+                    <p className="font-mono text-2xl font-bold">
+                      {v.queue_prefix && <span className="text-base opacity-80">{v.queue_prefix}</span>}
+                      {v.queue_number}
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -149,6 +157,27 @@ export default function QueueCheck() {
               {v.queue_status === "CHECKED_IN" && (
                 <p className="mt-2 text-center text-xs font-medium text-success">
                   Sudah check-in di klinik.
+                </p>
+              )}
+              {v.queue_status === "CANCELLED" && (
+                <p className="mt-2 text-center text-xs font-medium text-destructive">
+                  Antrean ini dibatalkan di klinik. Hubungi klinik bila tidak sesuai.
+                </p>
+              )}
+
+              {/* Only today's queue has a number being served; the field is null otherwise. */}
+              {v.queue_number && v.now_serving && (
+                <p className="mt-2 text-center text-sm">
+                  {v.now_serving === v.queue_number
+                    ? <span className="font-semibold text-success">Nomor Anda sedang dipanggil.</span>
+                    : (
+                      <>
+                        Sedang dipanggil: <span className="font-mono font-semibold">
+                          {v.queue_prefix}{v.now_serving}
+                        </span>
+                        {v.room_name ? ` · Ruang ${v.room_name}` : ""}
+                      </>
+                    )}
                 </p>
               )}
             </article>
