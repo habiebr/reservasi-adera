@@ -1,0 +1,16 @@
+{
+  "name": "voucher_klinik_v1",
+  "category": "UTILITY",
+  "attributes": [
+    {
+      "language": "id",
+      "components": [
+        {
+          "type": "BODY",
+          "text": "Halo Kak {{1}} 👋\n\nPembayaran voucher vaksin kamu sudah kami terima.\n\nVaksin: Influenza Vaxigrip TIV\nKode voucher: *{{2}}*\nDatang kapan saja: {{3}}\nLokasi: Klinik Pratama Adera, Sleman\n\nTunjukkan kode ini di pendaftaran dan bawa KTP asli ya. Voucher lengkap dengan QR code:\n{{4}}\n\nTerima kasih 🙏\nSehat Bersama Adera",
+          "example": { "body_text": [["Siti Rahmawati", "4827 1930", "11–18 November 2026, jam praktik", "https://reservasi.klinikadera.co.id/v/RSV-2611-000231"]] }
+        }
+      ]
+    }
+  ]
+}
