@@ -4,6 +4,8 @@ import { publicRoutes } from "./routes/public.ts";
 import { bookingRoutes } from "./routes/booking.ts";
 import { webhookRoutes } from "./routes/webhook.ts";
 import { adminRoutes } from "./routes/admin.ts";
+import { promoAdminRoutes, promoRoutes } from "./routes/promo.ts";
+import { startPromoSweeper } from "./promo.ts";
 
 const app = new Hono();
 
@@ -72,7 +74,10 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api", publicRoutes);
 app.route("/api/booking", bookingRoutes);
 app.route("/api/webhooks", webhookRoutes);
+app.route("/api/promo", promoRoutes);
+app.route("/api/admin/promo", promoAdminRoutes);
 app.route("/api/admin", adminRoutes);
+startPromoSweeper();
 
 // Built SPA (web/dist): serve real files (assets, logo, favicon, …) when they exist —
 // serveStatic calls next() on a miss — then fall back to index.html for SPA routes.

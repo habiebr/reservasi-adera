@@ -476,6 +476,7 @@ export interface CalqSaleItem {
   referenceId: number;
   quantity: number;
   unitPrice: string | number;
+  package?: "BIG" | "SMALL"; // required by Calq for PRODUCT lines ("Ukuran harus diisi")
 }
 
 export interface CalqSale {
@@ -507,6 +508,7 @@ export async function createSale(
     roomId?: number | null; // required by Calq for PROCEDURE items
     medicalPersonnelId?: number;
     notes?: string;
+    branchId?: number;
   },
 ): Promise<CalqSale> {
   const created = await calqPost(creds, "/sales", {
@@ -515,6 +517,7 @@ export async function createSale(
     ...(input.roomId ? { roomId: input.roomId } : {}),
     ...(input.medicalPersonnelId ? { medicalPersonnelId: input.medicalPersonnelId } : {}),
     ...(input.notes ? { notes: input.notes } : {}),
+    ...(input.branchId ? { branchId: input.branchId } : {}),
   });
   return created as CalqSale;
 }

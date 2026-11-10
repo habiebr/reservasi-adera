@@ -12,9 +12,11 @@ import {
   Plus,
   RefreshCcw,
   Settings2,
+  Ticket,
 } from "lucide-react";
 import BundlesTab from "./BundlesTab";
 import CalqBrowserTab from "./CalqBrowserTab";
+import PromoTab from "./PromoTab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +30,7 @@ interface Me {
 }
 
 const TABS = [
+  { id: "promo", label: "Voucher promo", icon: Ticket },
   { id: "forms", label: "Form", icon: LayoutList },
   { id: "bundles", label: "Paket", icon: Package },
   { id: "bookings", label: "Reservasi", icon: ClipboardList },
@@ -39,7 +42,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 export default function AdminApp() {
   const [me, setMe] = useState<Me | null | undefined>(undefined);
-  const [tab, setTab] = useState<TabId>("forms");
+  const [tab, setTab] = useState<TabId>("promo");
 
   const refresh = useCallback(() => {
     apiGet<Me>("/api/admin/me")
@@ -96,6 +99,7 @@ export default function AdminApp() {
         </nav>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">
+        {tab === "promo" && <PromoTab />}
         {tab === "forms" && <FormsTab />}
         {tab === "bundles" && <BundlesTab />}
         {tab === "bookings" && <BookingsTab />}

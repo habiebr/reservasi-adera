@@ -3,6 +3,7 @@
 import { Hono } from "hono";
 import { loadDokuCreds, verifyWebhookSignature } from "../doku.ts";
 import { markExpired, markPaidAndSync } from "./booking.ts";
+import { markPromoExpired, markPromoPaid } from "../promo.ts";
 
 export const webhookRoutes = new Hono();
 
@@ -32,6 +33,14 @@ webhookRoutes.post("/doku", async (c) => {
   const orderStatus = String(order.status ?? "").toUpperCase();
   console.log(`[webhook/doku] ${invoiceNumber} tx=${txStatus} order=${orderStatus}`);
 
+  if (invoiceNumber.startsWith("VCR-")) {
+    if (txStatus === "SUCCESS" || orderStatus === "PAID" || orderStatus === "SUCCESS") {
+      await markPromoPaid(invoiceNumber);
+    } else if (txStatus === "EXPIRED" || txStatus === "FAILED" || orderStatus === "EXPIRED") {
+      await markPromoExpired(invoiceNumber);
+    }
+    return c.json({ ok: true });
+  }
   if (!invoiceNumber.startsWith("RSV-")) return c.json({ ok: true });
 
   if (txStatus === "SUCCESS" || orderStatus === "PAID" || orderStatus === "SUCCESS") {

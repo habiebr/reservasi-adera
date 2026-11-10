@@ -117,6 +117,10 @@ export async function createCheckout(
       ],
     },
     notification_url: input.notificationUrl,
+    // DOKU Checkout ignores a top-level notification_url and posts to the URL set in the
+    // merchant's Back Office (which points at vaksinadera). override_notification_url is the
+    // per-order field it honours. Status polling (promo sweeper, status page) stays the backstop.
+    additional_info: { override_notification_url: input.notificationUrl },
   };
 
   const bodyString = JSON.stringify(body);
