@@ -88,7 +88,7 @@ export default function PromoPage({ id }: { id: string }) {
       </section>
 
       <section className="flex flex-col gap-4 px-4 pb-2 pt-7">
-        <p className="m-0 text-xl font-extrabold leading-snug text-[#0033FF]">Satu kali suntik, terlindungi setahun.</p>
+        <p className="m-0 text-xl font-extrabold leading-snug text-[#0033FF]">Perlindungan untuk influenza A dengan harga spesial 11.11!</p>
         <p className="m-0 text-base leading-[1.7] text-[#3B4458]">
           Di musim hujan, flu lebih gampang menular, dan sekali kena kamu bisa harus istirahat beberapa hari.
           Vaxigrip TIV melindungi dari tiga strain influenza yang diperkirakan beredar musim ini: A H1N1, A H3N2,
