@@ -74,8 +74,8 @@ export default function PromoPage({ id }: { id: string }) {
     <PromoShell>
       <section className="bg-[#E2386F]">
         <h1 className="sr-only">Flash Sale 11.11: vaksin influenza Vaxigrip TIV di Klinik Adera</h1>
-        {/* The clinic Vaxigrip poster prints price and dates to its bottom edge, so the countdown sits below it, not on it. */}
-        <img src="/promo/1111-klinik-2.webp" alt="Vaksin Influenza Vaxigrip TIV Rp189.000 per dosis, harga normal Rp310.000. Gratis biaya admin dan BHP. Reservasi hanya pada 11 November 2026, pelaksanaan 11–18 November 2026, khusus di Klinik Pratama Adera." className="block aspect-[1080/1440] w-full object-cover" />
+        {/* Clinic Flash Sale 11.11 poster (1111-klinik-1); the countdown sits below it, not on it. */}
+        <img src="/promo/1111-klinik-1.webp" alt="Flash Sale 11.11 di Klinik Pratama Adera" className="block aspect-[1080/1440] w-full object-cover" />
         <div className="px-4 pb-5 pt-1">
           <div className="flex flex-col gap-0.5 rounded-2xl bg-white px-5 py-3.5 text-[#0F2557]">
             <span className="text-[15px] font-semibold">
