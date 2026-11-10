@@ -212,7 +212,7 @@ function voucherEmail(o: Record<string, unknown>, c: Campaign) {
     ``,
     `Bawa KTP asli sesuai NIK dan tunjukkan kode ini di pendaftaran. Vaksinasi didahului pemeriksaan singkat oleh dokter.`,
     ``,
-    `Klinik Pratama Adera · WhatsApp 0811-1015-2170`,
+    `Klinik Pratama Adera · WhatsApp 0811-8000-8812`,
   ].join("\n");
   const row = (k: string, v: string) =>
     `<tr><td style="padding:8px 0;color:#5B6478;width:42%">${k}</td><td style="padding:8px 0;font-weight:600">${v}</td></tr>`;
@@ -231,7 +231,7 @@ ${row("Dibayar", `${rupiah(Number(o.amount))} · gratis admin &amp; BHP`)}${row(
 <p style="margin:20px 0"><a href="${link}" style="background:#0033FF;color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:8px;display:inline-block">Buka voucher</a></p>
 <div style="background:#FFF8E6;border:1px solid #F3DFA8;border-radius:12px;padding:14px;font-size:14px;line-height:1.6;color:#7A3E00">Bawa <strong>KTP asli</strong> sesuai NIK dan tunjukkan kode ini di pendaftaran. Vaksinasi didahului pemeriksaan singkat oleh dokter.</div>
 </div></div>
-<p style="font-size:13px;color:#3B4458;text-align:center;line-height:1.6">Klinik Pratama Adera · Sleman, Yogyakarta<br>WhatsApp 0811-1015-2170 · Email ini dikirim otomatis.</p>
+<p style="font-size:13px;color:#3B4458;text-align:center;line-height:1.6">Klinik Pratama Adera · Sleman, Yogyakarta<br>WhatsApp 0811-8000-8812 · Email ini dikirim otomatis.</p>
 </div></body></html>`;
   return { subject, text, html };
 }

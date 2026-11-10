@@ -161,7 +161,7 @@ export default function PromoPage({ id }: { id: string }) {
             {busy ? "Membuka pembayaran…" : open ? `Bayar ${rupiah(c.price_promo)}` : cd.phase === "upcoming" ? "Dibuka 11 November, 00.00 WIB" : "Promo telah berakhir"}
           </button>
         </form>
-        <a href="https://wa.me/6281110152170" className="mt-3.5 flex h-12 items-center justify-center rounded-lg border border-[#0033FF] text-[15px] font-bold text-[#0033FF] no-underline">
+        <a href="https://wa.me/6281180008812" className="mt-3.5 flex h-12 items-center justify-center rounded-lg border border-[#0033FF] text-[15px] font-bold text-[#0033FF] no-underline">
           Tanya dulu lewat WhatsApp
         </a>
       </section>
