@@ -75,9 +75,7 @@ export default function PromoPage({ id }: { id: string }) {
       <section className="relative text-white">
         <img src="/promo/1111-hero-mobile.webp" alt="Flash Sale 11.11 Vaksin Adera: vaksin makin hemat, khusus 11 November 2026" className="block aspect-[1080/1350] w-full object-cover" />
         <div className="absolute inset-x-4 bottom-5 flex flex-col gap-3.5">
-          <h1 className="m-0 text-[28px] font-extrabold leading-tight [text-shadow:0_1px_2px_rgba(120,0,40,0.35)]">
-            Lindungi diri dari influenza dengan harga spesial 11.11
-          </h1>
+          <h1 className="sr-only">Flash Sale 11.11: vaksin influenza Vaxigrip TIV di Klinik Adera</h1>
           <div className="flex flex-col gap-0.5 rounded-2xl bg-white px-5 py-3.5 text-[#0F2557]">
             <span className="text-[15px] font-semibold">
               {cd.phase === "upcoming" ? "Promo dimulai dalam" : cd.phase === "open" ? "Promo berakhir dalam" : "Promo telah berakhir"}
