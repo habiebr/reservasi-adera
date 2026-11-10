@@ -72,17 +72,17 @@ export default function PromoPage({ id }: { id: string }) {
 
   return (
     <PromoShell>
-      <section className="bg-[#E2386F]">
+      <section className="bg-[#4A00F8]">
         <h1 className="sr-only">Flash Sale 11.11: vaksin influenza Vaxigrip TIV di Klinik Adera</h1>
         {/* Clinic Flash Sale 11.11 poster (1111-klinik-1); the countdown sits below it, not on it. */}
         <img src="/promo/1111-klinik-1.webp" alt="Flash Sale 11.11 di Klinik Pratama Adera" className="block aspect-[1080/1440] w-full object-cover" />
         <div className="px-4 pb-5 pt-1">
           <div className="flex flex-col gap-0.5 rounded-2xl bg-white px-5 py-3.5 text-[#0F2557]">
-            <span className="text-[15px] font-semibold">
+            <span className="text-[15px] font-bold text-[#4A00F8]">
               {cd.phase === "upcoming" ? "Promo dimulai dalam" : cd.phase === "open" ? "Promo berakhir dalam" : "Promo telah berakhir"}
             </span>
             {cd.phase !== "closed" && (
-              <span className="text-[28px] font-extrabold tabular-nums text-[#B0124F]">{cd.clock}</span>
+              <span className="text-[28px] font-extrabold tabular-nums text-[#D1146F]">{cd.clock}</span>
             )}
           </div>
         </div>
