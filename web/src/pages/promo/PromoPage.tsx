@@ -71,7 +71,7 @@ export default function PromoPage({ id }: { id: string }) {
   const open = cd.phase === "open";
 
   return (
-    <PromoShell>
+    <PromoShell hideLogo>
       <section className="relative bg-[#4A00F8]">
         <h1 className="sr-only">Flash Sale 11.11: vaksin influenza Vaxigrip TIV di Klinik Adera</h1>
         {/* Clinic Flash Sale 11.11 poster (1111-klinik-1); a one-row countdown rides on its violet stage. */}
