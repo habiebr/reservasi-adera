@@ -52,6 +52,22 @@ app.use("*", async (c, next) => {
   }
 });
 
+/**
+ * promo.klinikadera.co.id: nginx sends the whole host here. "/" goes to the current promo
+ * (/11-11). Until PROMO_1111_LIVE=true the promo path redirects to the live campaign card on
+ * vaksinadera.co.id, so the domain can go up before the voucher checkout is switched on.
+ */
+const promoHost = (Deno.env.get("PROMO_HOST") ?? "promo.klinikadera.co.id").toLowerCase();
+app.use("*", async (c, next) => {
+  const host = (c.req.header("host") ?? "").split(":")[0].toLowerCase();
+  if (host !== promoHost) return next();
+  if (c.req.path === "/") return c.redirect("/11-11", 302);
+  if (c.req.path === "/11-11" && Deno.env.get("PROMO_1111_LIVE") !== "true") {
+    return c.redirect("https://vaksinadera.co.id/11-11#klinik-pratama", 302);
+  }
+  return next();
+});
+
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api", publicRoutes);
 app.route("/api/booking", bookingRoutes);
