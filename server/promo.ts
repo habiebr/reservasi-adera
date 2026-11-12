@@ -367,7 +367,10 @@ export async function redeemVoucher(
         items: [{ referenceType: "PRODUCT", referenceId: c.calq_product_id, quantity: 1, unitPrice: c.price_promo, package: "BIG" }],
         branchId: Number(Deno.env.get("CALQ_BRANCH_ID") ?? "1") || 1,
         // Calq wants a room on PRODUCT lines too; same default room the booking sync uses.
-        roomId: Number((await appSettings().catch(() => ({} as Record<string, string>)))["calq_default_room_id"] ??
+        // Stock-controlled vaccine: sell from the room that holds the stock (prod: 2 = Gudang
+        // Pratama, as v2 does), not the consult-room default bookings use for procedures.
+        roomId: Number(Deno.env.get("PROMO_CALQ_ROOM_ID") ??
+          (await appSettings().catch(() => ({} as Record<string, string>)))["calq_default_room_id"] ??
           Deno.env.get("CALQ_DEFAULT_ROOM_ID") ?? "") || null,
         notes: `Voucher ${c.title} ${o.invoice_number} (kode ${o.voucher_code}), harga normal ${rupiah(c.price_normal)}`,
       });
