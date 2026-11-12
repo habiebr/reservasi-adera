@@ -306,6 +306,17 @@ export async function voucherView(token: string) {
   };
 }
 
+/** "Vaksin Influenza Vaxigrip TIV Rp 310.000, diskon 11.11 Rp 121.000 = Rp 189.000 · voucher … · VCR-…" */
+export function promoSaleNote(
+  c: Pick<Campaign, "product_label" | "title" | "price_normal" | "price_promo">,
+  code: string,
+  invoice: string,
+): string {
+  const rp = (n: number) => "Rp " + n.toLocaleString("id-ID");
+  const label = c.title.replace(/^Flash Sale /, "");
+  return `${c.product_label} ${rp(c.price_normal)}, diskon ${label} ${rp(c.price_normal - c.price_promo)} = ${rp(c.price_promo)} · voucher ${code} · ${invoice}`;
+}
+
 // ── Admin redeem ──
 
 export async function redeemVoucher(
@@ -372,7 +383,9 @@ export async function redeemVoucher(
         roomId: Number(Deno.env.get("PROMO_CALQ_ROOM_ID") ??
           (await appSettings().catch(() => ({} as Record<string, string>)))["calq_default_room_id"] ??
           Deno.env.get("CALQ_DEFAULT_ROOM_ID") ?? "") || null,
-        notes: `Voucher ${c.title} ${o.invoice_number} (kode ${o.voucher_code}), harga normal ${rupiah(c.price_normal)}`,
+        // Calq ignores a discount amount on POST /sales, so the discount lives in the notes
+        // (same shape as v2's 11.11 sales): normal price, discount, = net; our reference last.
+        notes: promoSaleNote(c, String(o.voucher_code), String(o.invoice_number)),
       });
       if (!sale?.id) return fail("POST /sales tidak mengembalikan id invoice");
       saleId = String(sale.id);
